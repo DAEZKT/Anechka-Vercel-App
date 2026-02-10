@@ -1,0 +1,7 @@
+{
+  "name": "Tienda Anechka POS",
+  "description": "A modular, mobile-first POS and ERP system featuring Glassmorphism UI, Header-Detail architecture for sales, and Gemini AI integration for business insights.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
