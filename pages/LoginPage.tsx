@@ -2,12 +2,14 @@
 import React, { useState } from 'react';
 import { UserRole } from '../types';
 import { Captcha } from '../components/Captcha';
+import { userService } from '../services/supabaseService';
 
 interface LoginProps {
   onLogin: (user: any) => void;
+  onNavigate: (page: string) => void;
 }
 
-export const LoginPage: React.FC<LoginProps> = ({ onLogin }) => {
+export const LoginPage: React.FC<LoginProps> = ({ onLogin, onNavigate }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -27,51 +29,22 @@ export const LoginPage: React.FC<LoginProps> = ({ onLogin }) => {
     setLoading(true);
     setError('');
 
-    // Simulate API Call
-    setTimeout(() => {
-      setLoading(false);
-      if (email === 'admin@anechka.com' && password === 'admin') {
-        onLogin({
-          id: 'afc3b3f4-c244-4f6c-8221-526e7e17d637',
-          full_name: 'Ana Administradora',
-          email,
-          role: UserRole.ADMIN,
-          created_at: new Date().toISOString()
-        });
-      } else if (email === 'daezkt.wsyt@gmail.com' && password === '1987') {
-        onLogin({
-          id: 'ca57ce1e-9ae5-4b70-b6d8-45bbe74d28a9',
-          full_name: 'Super Admin Daezkt',
-          email,
-          role: UserRole.ADMIN,
-          created_at: new Date().toISOString()
-        });
-      } else if (email === 'Ann@Email.com' && password === '1990') {
-        // --- NUEVO ADMIN ---
-        onLogin({
-          id: 'cc7f8045-3f3b-4876-8807-683d4e6260a9',
-          full_name: 'Admin Ann',
-          email,
-          role: UserRole.ADMIN,
-          created_at: new Date().toISOString()
-        });
-      } else if (email === 'vendedor@anechka.com' && password === '123') {
-        onLogin({
-          id: 'ee7f8045-3f3b-4876-8807-683d4e6260a9',
-          full_name: 'Carlos Vendedor',
-          email,
-          role: UserRole.VENDEDOR,
-          created_at: new Date().toISOString()
-        });
+    try {
+      const user = await userService.authenticate(email, password);
+
+      if (user) {
+        onLogin(user);
       } else {
-        setError('Credenciales inválidas.');
-        // Optional: Reset captcha on credential error too? 
-        // Usually good security practice to prevent brute force, but prompt specifically said "al equivocarse el captcha".
-        // I will reset it here too for security robustness.
-        setCaptchaKey(prev => prev + 1);
+        setError('Credenciales inválidas o usuario inactivo.');
         setCaptchaValid(false);
+        setCaptchaKey(prev => prev + 1);
       }
-    }, 1500);
+    } catch (err) {
+      console.error("Login Error:", err);
+      setError('Error de conexión. Intente más tarde.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -202,7 +175,13 @@ export const LoginPage: React.FC<LoginProps> = ({ onLogin }) => {
         {/* Footer */}
         <div className="mt-8 pt-6 border-t border-gray-100 flex justify-between items-center text-[10px] text-gray-400">
           <p>© 2024 Anechka Systems</p>
-          <p>v1.2.1 Secure</p>
+          <button
+            type="button"
+            onClick={() => onNavigate('public-catalog')}
+            className="text-violet-600 font-bold hover:underline"
+          >
+            Ver Catálogo Público
+          </button>
         </div>
       </div>
 

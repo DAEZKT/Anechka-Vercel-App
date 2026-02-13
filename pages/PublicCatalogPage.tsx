@@ -34,6 +34,12 @@ export const PublicCatalogPage: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
     const [isCartOpen, setIsCartOpen] = useState(false);
+    const [isCheckoutFormOpen, setIsCheckoutFormOpen] = useState(false);
+
+    // Customer Info State
+    const [customerName, setCustomerName] = useState('');
+    const [customerAddress, setCustomerAddress] = useState('');
+    const [customerGPS, setCustomerGPS] = useState('');
 
     useEffect(() => {
         const loadData = async () => {
@@ -41,7 +47,6 @@ export const PublicCatalogPage: React.FC = () => {
                 productService.getAll(),
                 categoryService.getAll()
             ]);
-            // Filter only Active logic if existed? For now show all with stock > 0
             setProducts(prods.filter(p => p.stock_level > 0));
             setCategories(cats);
         };
@@ -52,7 +57,7 @@ export const PublicCatalogPage: React.FC = () => {
         setCart(prev => {
             const existing = prev.find(item => item.id === product.id);
             if (existing) {
-                if (existing.quantity >= product.stock_level) return prev; // Max Stock Reached
+                if (existing.quantity >= product.stock_level) return prev;
                 return prev.map(item =>
                     item.id === product.id
                         ? { ...item, quantity: item.quantity + 1 }
@@ -68,7 +73,7 @@ export const PublicCatalogPage: React.FC = () => {
         setCart(prev => prev.map(item => {
             if (item.id === productId) {
                 const newQty = item.quantity + delta;
-                if (newQty < 1) return item; // Handled by remove usually, but keep min 1
+                if (newQty < 1) return item;
                 if (newQty > item.stock_level) return item;
                 return { ...item, quantity: newQty };
             }
@@ -80,22 +85,60 @@ export const PublicCatalogPage: React.FC = () => {
         setCart(prev => prev.filter(item => item.id !== productId));
     };
 
-    const handleCheckout = () => {
+    const handleProceedToCheckout = () => {
         if (cart.length === 0) return;
+        setIsCartOpen(false);
+        setIsCheckoutFormOpen(true);
+        // Auto-request GPS when opening the form
+        requestGPSLocation();
+    };
 
-        let message = `Hola, me gustaría ordenar lo siguiente desde el catálogo web:\n\n`;
+    const handleFinalCheckout = () => {
+        if (!customerName.trim()) {
+            alert('Por favor ingresa tu nombre');
+            return;
+        }
+
+        let message = `NUEVO PEDIDO - CATÁLOGO WEB\n\n`;
+        message += `CLIENTE: ${customerName}\n`;
+        if (customerAddress.trim()) message += `DIRECCIÓN: ${customerAddress}\n`;
+        if (customerGPS.trim()) message += `UBICACIÓN GPS: ${customerGPS}\n`;
+        message += `\nPRODUCTOS:\n`;
+
         let total = 0;
-
         cart.forEach(item => {
             const subtotal = item.price * item.quantity;
-            message += `- ${item.quantity}x ${item.name} (${item.sku}) - Q${subtotal.toFixed(2)}\n`;
+            message += `- ${item.quantity}x ${item.name} (${item.sku}) - $${subtotal.toFixed(2)}\n`;
             total += subtotal;
         });
 
-        message += `\n*Total a Pagar: Q${total.toFixed(2)}*`;
+        message += `\nTOTAL: $${total.toFixed(2)}`;
 
         const encodedMessage = encodeURIComponent(message);
         window.open(`https://wa.me/50581028407?text=${encodedMessage}`, '_blank');
+
+        // Reset
+        setCart([]);
+        setCustomerName('');
+        setCustomerAddress('');
+        setCustomerGPS('');
+        setIsCheckoutFormOpen(false);
+    };
+
+    const requestGPSLocation = () => {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    setCustomerGPS(`${latitude}, ${longitude}`);
+                },
+                (error) => {
+                    console.log('GPS no disponible o denegado por el usuario');
+                }
+            );
+        } else {
+            console.log('Tu navegador no soporta geolocalización.');
+        }
     };
 
     const filteredProducts = products.filter(p => {
@@ -111,9 +154,19 @@ export const PublicCatalogPage: React.FC = () => {
         <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-24">
             {/* Header */}
             <header className="bg-white shadow-sm sticky top-0 z-30 px-4 py-3 flex items-center justify-between">
-                <div>
-                    <h1 className="font-black text-xl tracking-tighter text-brand-primary">ANECHKA</h1>
-                    <p className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">Catálogo en Línea</p>
+                <div className="flex items-center gap-3">
+                    <a
+                        href="#"
+                        onClick={(e) => { e.preventDefault(); window.location.href = '/'; }}
+                        className="text-xs text-gray-500 hover:text-brand-primary font-medium"
+                    >
+                        ← Volver
+                    </a>
+                    <div className="h-4 w-px bg-gray-200"></div>
+                    <div>
+                        <h1 className="font-black text-xl tracking-tighter text-brand-primary">ANECHKA</h1>
+                        <p className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">Catálogo en Línea</p>
+                    </div>
                 </div>
                 <button
                     onClick={() => setIsCartOpen(!isCartOpen)}
@@ -163,10 +216,10 @@ export const PublicCatalogPage: React.FC = () => {
             </div>
 
             {/* Product Grid */}
-            <div className="px-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="px-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {filteredProducts.map(product => (
                     <div key={product.id} className="bg-white rounded-xl overflow-hidden shadow-sm flex flex-col h-full animate-fade-in-up">
-                        <div className="relative aspect-square bg-gray-100">
+                        <div className="relative aspect-video bg-gray-100">
                             {product.image_url ? (
                                 <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
                             ) : (
@@ -175,19 +228,19 @@ export const PublicCatalogPage: React.FC = () => {
                                 </div>
                             )}
                             {product.stock_level < 5 && (
-                                <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">
-                                    ¡Solo quedan {product.stock_level}!
+                                <span className="absolute top-1 right-1 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">
+                                    ¡{product.stock_level} disponibles!
                                 </span>
                             )}
                         </div>
-                        <div className="p-3 flex-1 flex flex-col">
-                            <h3 className="font-bold text-sm text-gray-900 line-clamp-2 leading-snug">{product.name}</h3>
-                            <p className="text-xs text-gray-500 mt-1">{product.brand}</p>
-                            <div className="mt-auto pt-3 flex items-center justify-between">
-                                <span className="font-bold text-lg text-brand-primary">Q{product.price.toFixed(2)}</span>
+                        <div className="p-2.5 flex-1 flex flex-col">
+                            <h3 className="font-bold text-xs text-gray-900 line-clamp-2 leading-snug">{product.name}</h3>
+                            <p className="text-[10px] text-gray-500 mt-0.5">{product.brand}</p>
+                            <div className="mt-auto pt-2 flex items-center justify-between">
+                                <span className="font-bold text-base text-brand-primary">${product.price.toFixed(2)}</span>
                                 <button
                                     onClick={() => addToCart(product)}
-                                    className="w-8 h-8 rounded-full bg-brand-primary text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+                                    className="w-7 h-7 rounded-full bg-brand-primary text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
                                 >
                                     <Icons.Plus />
                                 </button>
@@ -221,7 +274,7 @@ export const PublicCatalogPage: React.FC = () => {
                                         </div>
                                         <div className="flex-1">
                                             <h4 className="font-bold text-sm text-gray-800">{item.name}</h4>
-                                            <p className="text-xs text-gray-500">Q{item.price.toFixed(2)}</p>
+                                            <p className="text-xs text-gray-500">${item.price.toFixed(2)}</p>
                                             <div className="flex items-center gap-3 mt-2">
                                                 <button onClick={() => updateQuantity(item.id, -1)} className="p-1 bg-gray-100 rounded hover:bg-gray-200"><Icons.Minus /></button>
                                                 <span className="font-bold text-sm w-4 text-center">{item.quantity}</span>
@@ -229,7 +282,7 @@ export const PublicCatalogPage: React.FC = () => {
                                             </div>
                                         </div>
                                         <div className="flex flex-col justify-between items-end">
-                                            <span className="font-bold text-sm">Q{(item.price * item.quantity).toFixed(2)}</span>
+                                            <span className="font-bold text-sm">${(item.price * item.quantity).toFixed(2)}</span>
                                             <button onClick={() => removeFromCart(item.id)} className="text-red-400 p-1"><Icons.Trash /></button>
                                         </div>
                                     </div>
@@ -240,15 +293,102 @@ export const PublicCatalogPage: React.FC = () => {
                         <div className="p-4 border-t border-gray-100 safe-area-pb">
                             <div className="flex justify-between items-center mb-4">
                                 <span className="text-gray-500">Total</span>
-                                <span className="text-xl font-black text-brand-primary">Q{cartTotal.toFixed(2)}</span>
+                                <span className="text-xl font-black text-brand-primary">${cartTotal.toFixed(2)}</span>
                             </div>
                             <button
-                                onClick={handleCheckout}
+                                onClick={handleProceedToCheckout}
                                 disabled={cart.length === 0}
-                                className="w-full py-4 bg-[#25D366] text-white font-bold rounded-xl shadow-lg shadow-green-500/30 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"
+                                className="w-full py-4 bg-brand-primary text-white font-bold rounded-xl shadow-lg shadow-brand-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"
                             >
-                                <span className="fill-current"><Icons.Whatsapp /></span>
-                                Enviar Pedido por WhatsApp
+                                Continuar con el Pedido
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Customer Info Form Modal */}
+            {isCheckoutFormOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                        <div className="bg-brand-primary p-4 text-white">
+                            <h2 className="font-bold text-lg">Información de Entrega</h2>
+                            <p className="text-xs text-white/80 mt-1">Completa tus datos para finalizar el pedido</p>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-2">Nombre Completo *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={customerName}
+                                    onChange={(e) => setCustomerName(e.target.value)}
+                                    placeholder="Ej: Juan Pérez"
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition-all"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-2">Dirección de Entrega</label>
+                                <textarea
+                                    value={customerAddress}
+                                    onChange={(e) => setCustomerAddress(e.target.value)}
+                                    placeholder="Ej: Zona 10, Calle Principal #123"
+                                    rows={2}
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition-all resize-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-2">Ubicación GPS (Opcional)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={customerGPS}
+                                        onChange={(e) => setCustomerGPS(e.target.value)}
+                                        placeholder="Lat, Long o pega el link de Google Maps"
+                                        className="flex-1 px-4 py-3 rounded-lg border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition-all"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={requestGPSLocation}
+                                        className="px-4 py-3 bg-gray-100 hover:bg-gray-200 rounded-lg font-bold text-sm transition-colors flex items-center justify-center"
+                                        title="Obtener mi ubicación actual"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
+                                            <circle cx="12" cy="10" r="3"></circle>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-1">Ayúdanos a encontrarte más fácil</p>
+                            </div>
+
+                            <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-gray-600">Total a Pagar:</span>
+                                    <span className="font-black text-xl text-brand-primary">${cartTotal.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100 flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setIsCheckoutFormOpen(false);
+                                    setIsCartOpen(true);
+                                }}
+                                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-all"
+                            >
+                                Volver
+                            </button>
+                            <button
+                                onClick={handleFinalCheckout}
+                                className="flex-1 py-3 bg-[#25D366] text-white font-bold rounded-xl shadow-lg shadow-green-500/30 active:scale-95 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Icons.Whatsapp />
+                                Enviar Pedido
                             </button>
                         </div>
                     </div>

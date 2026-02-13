@@ -37,7 +37,7 @@ export default function App() {
 
   // 2. Auth Guard
   if (!user) {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LoginPage onLogin={handleLogin} onNavigate={setCurrentPage} />;
   }
 
   // Router Switch
@@ -73,7 +73,7 @@ export default function App() {
   };
 
   // 3. Permission Guard
-  if (!hasPermission(user.role, currentPage)) {
+  if (!hasPermission(user.role, currentPage, user.custom_permissions)) {
     // If unauthorized, redirect to dashboard or show error
     // Ideally we would set state, but simple return works for now
     // Prevent infinite loop if dashboard is also restricted (unlikely for most)

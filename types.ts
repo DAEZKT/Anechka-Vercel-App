@@ -17,6 +17,7 @@ export interface User {
   full_name: string;
   role: UserRole;
   is_active: boolean; // New Field for Soft Delete
+  custom_permissions?: string[]; // Array of allowed keys from ROLE_PERMISSIONS
   created_at: string;
 }
 

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
+import { ChangePasswordModal } from './ChangePasswordModal';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -53,9 +54,13 @@ const Icons = {
   )
 };
 
+// Helper to check permission
+import { hasPermission } from '../utils/permissions';
+
 export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, onNavigate }) => {
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   // Auto-expand menu if current page belongs to it
   useEffect(() => {
@@ -72,6 +77,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
 
   const toggleInventory = () => {
     setIsInventoryOpen(!isInventoryOpen);
+  };
+
+  const checkAccess = (page: string) => {
+    if (!user) return false;
+    return hasPermission(user.role, page, user.custom_permissions);
   };
 
   return (
@@ -132,97 +142,107 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
 
         {/* Navigation Items */}
         <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-2 scrollbar-hide">
-          <NavButton active={currentPage === 'dashboard'} onClick={() => handleMobileNavigate('dashboard')} icon={Icons.Dashboard}>
-            Dashboard
-          </NavButton>
+          {checkAccess('dashboard') && (
+            <NavButton active={currentPage === 'dashboard'} onClick={() => handleMobileNavigate('dashboard')} icon={Icons.Dashboard} label="Dashboard" />
+          )}
 
-          <NavButton active={currentPage === 'pos'} onClick={() => handleMobileNavigate('pos')} icon={Icons.POS}>
-            Punto de Venta
-          </NavButton>
+          {checkAccess('pos') && (
+            <NavButton active={currentPage === 'pos'} onClick={() => handleMobileNavigate('pos')} icon={Icons.POS} label="Punto de Venta" />
+          )}
 
-          <NavButton active={currentPage === 'cash-close'} onClick={() => handleMobileNavigate('cash-close')} icon={Icons.Cashbox}>
-            Cierre de Caja
-          </NavButton>
+          {checkAccess('cash-close') && (
+            <NavButton active={currentPage === 'cash-close'} onClick={() => handleMobileNavigate('cash-close')} icon={Icons.Cashbox} label="Cierre de Caja" />
+          )}
 
-          <NavButton active={currentPage === 'sales'} onClick={() => handleMobileNavigate('sales')} icon={Icons.Sales}>
-            Historial Ventas
-          </NavButton>
+          {checkAccess('sales') && (
+            <NavButton active={currentPage === 'sales'} onClick={() => handleMobileNavigate('sales')} icon={Icons.Sales} label="Historial Ventas" />
+          )}
 
-          <NavButton active={currentPage === 'customers'} onClick={() => handleMobileNavigate('customers')} icon={Icons.Customers}>
-            Clientes
-          </NavButton>
+          {checkAccess('customers') && (
+            <NavButton active={currentPage === 'customers'} onClick={() => handleMobileNavigate('customers')} icon={Icons.Customers} label="Clientes" />
+          )}
 
-          <NavButton active={currentPage === 'suppliers'} onClick={() => handleMobileNavigate('suppliers')} icon={Icons.Suppliers}>
-            Proveedores
-          </NavButton>
+          {checkAccess('suppliers') && (
+            <NavButton active={currentPage === 'suppliers'} onClick={() => handleMobileNavigate('suppliers')} icon={Icons.Suppliers} label="Proveedores" />
+          )}
 
           {/* Inventory Group */}
-          <div className="space-y-1">
-            <button
-              onClick={toggleInventory}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group
+          {/* Check general inventory permission or any specific inventory sub-permission */}
+          {(checkAccess('inventory') || checkAccess('inventory-stock')) && (
+            <div className="space-y-1">
+              <button
+                onClick={toggleInventory}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group
                 ${currentPage.startsWith('inventory')
-                  ? 'bg-white/50 text-brand-primary shadow-sm'
-                  : 'hover:bg-white/40 text-gray-700'
-                }
+                    ? 'bg-white/50 text-brand-primary shadow-sm'
+                    : 'hover:bg-white/40 text-gray-700'
+                  }
               `}
-            >
-              <div className="flex items-center gap-3">
-                <Icons.Inventory className={`w-5 h-5 ${currentPage.startsWith('inventory') ? 'text-brand-primary' : 'text-gray-500 group-hover:text-brand-primary'}`} />
-                <span>Inventario</span>
-              </div>
-              <ChevronDown isOpen={isInventoryOpen} />
-            </button>
+              >
+                <div className="flex items-center gap-3">
+                  <Icons.Inventory className={`w-5 h-5 ${currentPage.startsWith('inventory') ? 'text-brand-primary' : 'text-gray-500 group-hover:text-brand-primary'}`} />
+                  <span>Inventario</span>
+                </div>
+                <ChevronDown isOpen={isInventoryOpen} />
+              </button>
 
-            {isInventoryOpen && (
-              <div className="pl-4 space-y-1 animate-fade-in-down border-l-2 border-brand-primary/20 ml-4 my-1">
-                <NavSubButton
-                  active={currentPage === 'inventory-stock'}
-                  onClick={() => handleMobileNavigate('inventory-stock')}
-                  label="Existencias"
-                />
-                <NavSubButton
-                  active={currentPage === 'inventory-catalog'}
-                  onClick={() => handleMobileNavigate('inventory-catalog')}
-                  label="Nuevo Producto"
-                />
-                <NavSubButton
-                  active={currentPage === 'inventory-movements'}
-                  onClick={() => handleMobileNavigate('inventory-movements')}
-                  label="Movimientos"
-                />
-                <NavSubButton
-                  active={currentPage === 'inventory-kardex'}
-                  onClick={() => handleMobileNavigate('inventory-kardex')}
-                  label="Kardex"
-                />
-                <NavSubButton
-                  active={currentPage === 'inventory-audit'}
-                  onClick={() => handleMobileNavigate('inventory-audit')}
-                  label="Auditoría"
-                />
-              </div>
-            )}
-          </div>
+              {isInventoryOpen && (
+                <div className="pl-4 space-y-1 animate-fade-in-down border-l-2 border-brand-primary/20 ml-4 my-1">
+                  <NavSubButton
+                    active={currentPage === 'inventory-stock'}
+                    onClick={() => handleMobileNavigate('inventory-stock')}
+                    label="Existencias"
+                  />
+                  <NavSubButton
+                    active={currentPage === 'inventory-catalog'}
+                    onClick={() => handleMobileNavigate('inventory-catalog')}
+                    label="Nuevo Producto"
+                  />
+                  <NavSubButton
+                    active={currentPage === 'inventory-movements'}
+                    onClick={() => handleMobileNavigate('inventory-movements')}
+                    label="Movimientos"
+                  />
+                  <NavSubButton
+                    active={currentPage === 'inventory-kardex'}
+                    onClick={() => handleMobileNavigate('inventory-kardex')}
+                    label="Kardex"
+                  />
+                  {checkAccess('inventory-audit') && (
+                    <NavSubButton
+                      active={currentPage === 'inventory-audit'}
+                      onClick={() => handleMobileNavigate('inventory-audit')}
+                      label="Auditoría"
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
-          <NavButton active={currentPage === 'expenses'} onClick={() => handleMobileNavigate('expenses')} icon={Icons.Expenses}>
-            Egresos y Gastos
-          </NavButton>
+          {checkAccess('expenses') && (
+            <NavButton active={currentPage === 'expenses'} onClick={() => handleMobileNavigate('expenses')} icon={Icons.Expenses} label="Egresos y Gastos" />
+          )}
 
-          <NavButton active={currentPage === 'admin'} onClick={() => handleMobileNavigate('admin')} icon={Icons.Settings}>
-            Control Interno
-          </NavButton>
+          {/* Admin / Control Interno */}
+          {/* Usually admin only, but maybe customizable? For now keep 'admin' check */}
+          {checkAccess('admin') && (
+            <NavButton active={currentPage === 'admin'} onClick={() => handleMobileNavigate('admin')} icon={Icons.Settings} label="Control Interno" />
+          )}
 
-          {user?.role === UserRole.ADMIN && (
-            <NavButton active={currentPage === 'users'} onClick={() => handleMobileNavigate('users')} icon={Icons.Security}>
-              Usuarios
-            </NavButton>
+          {/* Users - Restricted to Admin typically, but let's check permission 'users' specifically if we add it */}
+          {(user?.role === UserRole.ADMIN || checkAccess('users')) && (
+            <NavButton active={currentPage === 'users'} onClick={() => handleMobileNavigate('users')} icon={Icons.Security} label="Usuarios" />
           )}
         </nav>
 
         {/* Sidebar Footer (User Profile) */}
         <div className="p-4 border-t border-white/20 bg-white/30 md:bg-white/10">
-          <div className="flex items-center gap-3 mb-3">
+          <div
+            className="flex items-center gap-3 mb-3 cursor-pointer hover:bg-white/20 p-2 rounded-lg transition-colors group/profile"
+            onClick={() => setIsProfileModalOpen(true)}
+            title="Clic para cambiar contraseña"
+          >
             <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold text-xs">
               {user?.full_name.charAt(0)}
             </div>
@@ -230,6 +250,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
               <p className="text-sm font-medium truncate text-gray-800">{user?.full_name}</p>
               <p className="text-xs text-gray-500 truncate">{user?.role}</p>
             </div>
+            <Icons.Settings className="w-4 h-4 text-gray-400 group-hover/profile:text-brand-primary transition-colors opacity-0 group-hover/profile:opacity-100" />
           </div>
           <button
             onClick={onLogout}
@@ -239,6 +260,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
           </button>
         </div>
       </aside>
+
+      {user && (
+        <ChangePasswordModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          userId={user.id}
+          userName={user.full_name}
+          userEmail={user.email}
+          requireOldPassword={true}
+        />
+      )}
 
       {/* Main Content Area */}
       {/* Adjusted margins: md:ml-0 because Sidebar is now flex in flow on desktop, no longer absolute positioning needed for main layout */}
@@ -251,7 +283,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
 };
 
 // UI Components
-const NavButton = ({ children, active, onClick, icon: Icon }: any) => (
+const NavButton = ({ children, active, onClick, icon: Icon, label }: any) => (
   <button
     onClick={onClick}
     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group
@@ -262,7 +294,7 @@ const NavButton = ({ children, active, onClick, icon: Icon }: any) => (
     `}
   >
     <Icon className={`w-5 h-5 ${active ? 'text-white' : 'text-gray-500 group-hover:text-brand-primary'}`} />
-    {children}
+    {label || children}
   </button>
 );
 

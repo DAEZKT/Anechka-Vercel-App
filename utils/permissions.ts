@@ -5,13 +5,24 @@ export const PUBLIC_ROUTES = ['public-catalog'];
 
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     [UserRole.ADMIN]: ['*'], // Access to everything
-    [UserRole.VENDEDOR]: ['dashboard', 'pos', 'sales', 'customers', 'cash-close'],
+    [UserRole.VENDEDOR]: ['pos', 'sales', 'customers', 'cash-close'],
     [UserRole.CONTADOR]: ['dashboard', 'sales', 'expenses', 'cash-close'], // Audit? Maybe read only
     [UserRole.AUDITOR]: ['inventory-audit'],
     [UserRole.CLIENTE]: [] // No internal access
 };
 
-export const hasPermission = (role: UserRole, page: string): boolean => {
+export const hasPermission = (role: UserRole, page: string, customPermissions?: string[]): boolean => {
+    // 1. Check custom permissions if available
+    if (customPermissions && customPermissions.length > 0) {
+        if (customPermissions.includes('*')) return true;
+        if (customPermissions.includes(page)) return true;
+        if (page.startsWith('inventory-')) {
+            if (customPermissions.includes('inventory')) return true;
+        }
+        return false;
+    }
+
+    // 2. Fallback to Role Permissions
     const allowedPages = ROLE_PERMISSIONS[role];
     if (!allowedPages) {
         console.warn(`Role ${role} not found in permissions`);

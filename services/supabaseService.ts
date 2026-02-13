@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import bcrypt from 'bcryptjs';
 import {
   Product,
   Category,
@@ -1050,20 +1051,41 @@ export const expenseService = {
 // ==================== USER SERVICE (for authentication) ====================
 export const userService = {
   authenticate: async (email: string, password: string): Promise<User | null> => {
-    // Note: In production, you should use Supabase Auth
-    // For now, simple password check (NOT SECURE - for demo only)
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .eq('is_active', true)
-      .single();
+    try {
+      // 1. Check DB for user
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .eq('is_active', true)
+        .single();
 
-    if (error || !data) return null;
+      if (error || !data) {
+        console.warn("User authentication failed: Not found or error", error);
+        return null;
+      }
 
-    // In production, verify password hash here
-    // For now, accepting any password for demo
-    return data;
+      // 2. Verify password
+      // If user has a password_hash, verify it
+      if (data.password_hash) {
+        const isValid = await bcrypt.compare(password, data.password_hash);
+        if (!isValid) {
+          console.warn("User authentication failed: Invalid password");
+          return null;
+        }
+      } else {
+        // Legacy or Migrated users without hash - Fail secure
+        // Or if you want to allow a specific fallback, handle it here.
+        // For strictly secure system:
+        console.warn("User has no password set");
+        return null;
+      }
+
+      return data;
+    } catch (err) {
+      console.error("Auth Exception:", err);
+      return null;
+    }
   },
 
   getAll: async (): Promise<User[]> => {
@@ -1074,10 +1096,113 @@ export const userService = {
 
     if (error) throw error;
     return data || [];
+  },
+
+  changePassword: async (userId: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const hash = await bcrypt.hash(newPassword, 10);
+      const { error } = await supabase
+        .from('users')
+        .update({ password_hash: hash, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Error updating password' };
+    }
+  },
+
+  create: async (user: { full_name: string; email: string; role: string; password?: string }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      if (!user.password || user.password.length < 4) {
+        throw new Error('La contraseña es obligatoria y debe tener al menos 4 caracteres.');
+      }
+
+      const newUser: any = {
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        is_active: true
+      };
+
+      try {
+        const hash = await bcrypt.hash(user.password, 10);
+        newUser.password_hash = hash;
+      } catch (bcryptError: any) {
+        console.error("Bcrypt Error:", bcryptError);
+        throw new Error("Error al procesar la contraseña. (Bcrypt)");
+      }
+
+      const { error } = await supabase.from('users').insert(newUser);
+
+      if (error) {
+        console.error("Supabase Insert Error:", error);
+        throw new Error(error.message || "Error al insertar usuario en base de datos.");
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      console.error("Create User Error:", e);
+      throw e; // Throw to be caught by UI
+    }
+  },
+
+  update: async (id: string, updates: { full_name?: string; email?: string; role?: string }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      console.error("Update User Error:", e);
+      throw e;
+    }
+  },
+
+  toggleStatus: async (id: string): Promise<void> => {
+    try {
+      // 1. Get current status
+      const { data, error } = await supabase
+        .from('users')
+        .select('is_active')
+        .eq('id', id)
+        .single();
+
+      if (error || !data) throw error || new Error("User not found");
+
+      // 2. Toggle
+      await supabase
+        .from('users')
+        .update({ is_active: !data.is_active })
+        .eq('id', id);
+
+    } catch (e) {
+      console.error("Toggle Status Error:", e);
+      throw e;
+    }
+  },
+
+  updatePermissions: async (id: string, permissions: string[] | null): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ custom_permissions: permissions, updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      console.error("Update Permissions Error:", e);
+      return { success: false, error: e.message || "Error al actualizar permisos" };
+    }
   }
 };
 
-// Export mock users for login page
+// Export mock users for reference (Legacy)
 export const MOCK_USERS = [
-  { id: 'usr-001', email: 'admin@anechka.com', full_name: 'Administrador', role: 'ADMIN' as const, is_active: true, created_at: new Date().toISOString() }
+  // Keep for reference if needed, but logic now uses DB
 ];
