@@ -1,505 +1,592 @@
-
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { GlassCard } from '../components/GlassCard';
-import { productService, customerService, salesService, expenseService } from '../services/supabaseService';
-import { Product, SaleHeader, Expense, User } from '../types';
+import { productService, salesService, expenseService } from '../services/supabaseService';
+import { Product, SaleHeader, Expense, User, SaleDetail } from '../types';
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import {
+   BarChart,
+   Bar,
+   XAxis,
+   YAxis,
+   CartesianGrid,
+   Tooltip,
+   Legend,
+   ResponsiveContainer,
+   PieChart,
+   Pie,
+   Cell
+} from 'recharts';
 
 interface DashboardProps {
-  user?: User;
+   user?: User;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
-  const [loading, setLoading] = useState(true);
-  const [financials, setFinancials] = useState({
-    totalRevenue: 0,
-    totalExpenses: 0,
-    netProfit: 0,
-    margin: 0
-  });
-  const [weeklyData, setWeeklyData] = useState<{day: string, income: number, expense: number}[]>([]);
-  const [lowStockItems, setLowStockItems] = useState<Product[]>([]);
-  const [topProducts, setTopProducts] = useState<{name: string, qty: number, total: number}[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [products, setProducts] = useState<Product[]>([]);
+   const [sales, setSales] = useState<SaleHeader[]>([]);
+   const [expenses, setExpenses] = useState<Expense[]>([]);
+   const [saleDetails, setSaleDetails] = useState<SaleDetail[]>([]);
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
+   // Date Filter State
+   const [dateRange, setDateRange] = useState(() => {
+      // Initialize with Local Date Strings (YYYY-MM-DD)
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const loadDashboardData = async () => {
-    setLoading(true);
-    try {
-      const [products, sales, expenses, allSaleDetails] = await Promise.all([
-        productService.getAll(),
-        salesService.getSalesHistory(),
-        expenseService.getAll(),
-        salesService.getAllDetails()
-      ]);
-
-      // 1. Calculate Financials (Global)
-      const revenue = sales.reduce((sum, s) => sum + s.total_amount, 0);
-      const outcome = expenses.reduce((sum, e) => sum + e.total, 0);
-      const profit = revenue - outcome;
-      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-
-      setFinancials({
-        totalRevenue: revenue,
-        totalExpenses: outcome,
-        netProfit: profit,
-        margin
-      });
-
-      // 2. Process Weekly Data (Strict Calendar Week: Mon -> Sun)
-      const getStartOfWeek = (d: Date) => {
-         const date = new Date(d);
-         const day = date.getDay(); // 0 (Sun) to 6 (Sat)
-         const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-         const monday = new Date(date.setDate(diff));
-         monday.setHours(0,0,0,0);
-         return monday;
+      // Helper to get local YYYY-MM-DD
+      const toLocalISO = (d: Date) => {
+         const year = d.getFullYear();
+         const month = String(d.getMonth() + 1).padStart(2, '0');
+         const day = String(d.getDate()).padStart(2, '0');
+         return `${year}-${month}-${day}`;
       };
 
-      const startOfWeek = getStartOfWeek(new Date());
-      const weekDays = [];
-      
-      // Generate the 7 days of the CURRENT week
-      for(let i=0; i<7; i++) {
-         const d = new Date(startOfWeek);
-         d.setDate(startOfWeek.getDate() + i);
-         weekDays.push(d);
+      return {
+         start: toLocalISO(firstDay),
+         end: toLocalISO(now)
+      };
+   });
+
+   useEffect(() => {
+      loadBaseData();
+   }, []);
+
+   const loadBaseData = async () => {
+      setLoading(true);
+      try {
+         const [prodData, salesData, expData, detailsData] = await Promise.all([
+            productService.getAll(),
+            salesService.getSalesHistory(),
+            expenseService.getAll(),
+            salesService.getAllDetails()
+         ]);
+         setProducts(prodData);
+         setSales(salesData);
+         setExpenses(expData);
+         setSaleDetails(detailsData);
+      } catch (error) {
+         console.error("Error loading dashboard base data", error);
+      } finally {
+         setLoading(false);
+      }
+   };
+
+   // --- MEMOIZED CALCULATIONS BASED ON DATE RANGE ---
+
+   const filteredData = useMemo(() => {
+      const startStr = dateRange.start;
+      const endStr = dateRange.end;
+
+      const getLocalYMD = (dateInput: string | Date) => {
+         if (!dateInput) return '';
+         // If it's already YYYY-MM-DD string (common in expenses), return it directly to avoid TZ shifts
+         if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+            return dateInput;
+         }
+         const d = new Date(dateInput);
+         const year = d.getFullYear();
+         const month = String(d.getMonth() + 1).padStart(2, '0');
+         const day = String(d.getDate()).padStart(2, '0');
+         return `${year}-${month}-${day}`;
+      };
+
+      const filteredSales = sales.filter(s => {
+         const dateStr = getLocalYMD(s.created_at);
+         return dateStr >= startStr && dateStr <= endStr;
+      });
+
+      const filteredExpenses = expenses.filter(e => {
+         const dateStr = getLocalYMD(e.date);
+         return dateStr >= startStr && dateStr <= endStr;
+      });
+
+      const salesIds = new Set(filteredSales.map(s => s.id));
+      const filteredDetails = saleDetails.filter(d => salesIds.has(d.sale_id));
+
+      return { sales: filteredSales, expenses: filteredExpenses, details: filteredDetails };
+   }, [sales, expenses, saleDetails, dateRange]);
+
+   const financials = useMemo(() => {
+      const revenue = filteredData.sales.reduce((sum, s) => sum + s.total_amount, 0);
+      const outcome = filteredData.expenses.reduce((sum, e) => sum + e.total, 0);
+      const profit = revenue - outcome;
+      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+      return { revenue, outcome, profit, margin };
+   }, [filteredData]);
+
+   const dailyData = useMemo(() => {
+      const dataMap = new Map<string, { date: string, income: number, expense: number }>();
+
+      // Iterate through all days in range for continuous chart
+      const start = new Date(dateRange.start + 'T00:00:00');
+      const end = new Date(dateRange.end + 'T00:00:00'); // Time doesn't matter for iteration count
+
+      // Safety check: if range is invalid or too huge, limit it?
+      // Assuming standard usage.
+
+      // Helper to format map keys as YYYY-MM-DD
+      const toYMD = (d: Date) => {
+         const year = d.getFullYear();
+         const month = String(d.getMonth() + 1).padStart(2, '0');
+         const day = String(d.getDate()).padStart(2, '0');
+         return `${year}-${month}-${day}`;
+      };
+
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+         const dateStr = toYMD(d);
+         const displayDate = d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+         dataMap.set(dateStr, { date: displayDate, income: 0, expense: 0 });
       }
 
-      const daysLabels = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']; // JS getDay index mapping
+      // If dataMap is empty (single day range), add the single day
+      if (dataMap.size === 0) {
+         const d = new Date(dateRange.start + 'T00:00:00');
+         const dateStr = toYMD(d);
+         const displayDate = d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+         dataMap.set(dateStr, { date: displayDate, income: 0, expense: 0 });
+      }
 
-      const currentWeekData = weekDays.map((dateObj) => {
-         const dateStr = dateObj.toDateString(); // "Mon Feb 10 2024" standardizes comparison
-         
-         const daySales = sales
-            .filter(s => new Date(s.created_at).toDateString() === dateStr)
-            .reduce((sum, s) => sum + s.total_amount, 0);
-         
-         const dayExpenses = expenses
-            .filter(e => new Date(e.date).toDateString() === dateStr)
-            .reduce((sum, e) => sum + e.total, 0);
+      filteredData.sales.forEach(s => {
+         // Use getLocalYMD logic again or rely on map keys
+         // s.created_at is UTC ISO usually. new Date() gives local.
+         const d = new Date(s.created_at);
+         const dateKey = toYMD(d);
 
-         // Map JS Day (0=Sun) to Spanish Label
-         return { 
-             day: daysLabels[dateObj.getDay()], 
-             income: daySales, 
-             expense: dayExpenses 
-         };
-      });
-      
-      setWeeklyData(currentWeekData);
-
-      // 3. Stock Alerts
-      const lowStock = products.filter(p => p.stock_level <= p.min_stock);
-      setLowStockItems(lowStock.sort((a,b) => a.stock_level - b.stock_level).slice(0, 4));
-
-      // 4. Top Selling Products (REAL CALCULATION)
-      const productSalesMap: Record<string, { qty: number, total: number }> = {};
-      
-      allSaleDetails.forEach(detail => {
-         if (!productSalesMap[detail.product_id]) {
-            productSalesMap[detail.product_id] = { qty: 0, total: 0 };
+         if (dataMap.has(dateKey)) {
+            dataMap.get(dateKey)!.income += s.total_amount;
          }
-         productSalesMap[detail.product_id].qty += detail.quantity;
-         productSalesMap[detail.product_id].total += detail.subtotal;
       });
 
-      const bestSellers = Object.entries(productSalesMap)
-         .map(([prodId, stats]) => {
-            const prod = products.find(p => p.id === prodId);
+      filteredData.expenses.forEach(e => {
+         // e.date might be YYYY-MM-DD string
+         let dateKey = '';
+         if (typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)) {
+            dateKey = e.date;
+         } else {
+            dateKey = toYMD(new Date(e.date));
+         }
+
+         if (dataMap.has(dateKey)) {
+            dataMap.get(dateKey)!.expense += e.total;
+         }
+      });
+
+      return Array.from(dataMap.values());
+   }, [filteredData, dateRange]);
+
+   const categoryData = useMemo(() => {
+      const catMap: Record<string, number> = {};
+      filteredData.details.forEach(d => {
+         const product = products.find(p => p.id === d.product_id);
+         const catName = product?.category_name || 'Sin Categoría';
+         catMap[catName] = (catMap[catName] || 0) + d.subtotal;
+      });
+
+      return Object.entries(catMap)
+         .map(([name, value]) => ({ name, value }))
+         .sort((a, b) => b.value - a.value)
+         .slice(0, 5); // Top 5
+   }, [filteredData, products]);
+
+   const cleanMethodName = (name: string) => {
+      if (!name) return 'Desconocido';
+      return name.includes('|') ? name.split('|')[1].trim() : name;
+   };
+
+   const paymentMethodData = useMemo(() => {
+      const pmMap: Record<string, number> = {};
+      filteredData.sales.forEach(s => {
+         const raw = s.payment_method_name || 'Desconocido';
+         const method = cleanMethodName(raw);
+         pmMap[method] = (pmMap[method] || 0) + s.total_amount;
+      });
+      return Object.entries(pmMap)
+         .map(([name, value]) => ({ name, value }))
+         .sort((a, b) => b.value - a.value);
+   }, [filteredData]);
+
+
+   const topProducts = useMemo(() => {
+      const prodMap: Record<string, { qty: number, total: number }> = {};
+      filteredData.details.forEach(d => {
+         if (!prodMap[d.product_id]) {
+            prodMap[d.product_id] = { qty: 0, total: 0 };
+         }
+         prodMap[d.product_id].qty += d.quantity;
+         prodMap[d.product_id].total += d.subtotal;
+      });
+
+      return Object.entries(prodMap)
+         .map(([id, stats]) => {
+            const product = products.find(p => p.id === id);
             return {
-               name: prod ? prod.name : 'Desconocido',
+               name: product?.name || 'Desconocido',
                qty: stats.qty,
                total: stats.total
             };
          })
-         .sort((a, b) => b.total - a.total) // Sort by Revenue
-         .slice(0, 3);
-      
-      setTopProducts(bestSellers);
+         .sort((a, b) => b.total - a.total)
+         .slice(0, 5);
+   }, [filteredData, products]);
 
-    } catch (error) {
-      console.error("Error loading dashboard", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+   const lowStockItems = useMemo(() => {
+      // Stock is current state, not historical. So we look at products directly.
+      return products
+         .filter(p => p.stock_level <= p.min_stock)
+         .sort((a, b) => a.stock_level - b.stock_level)
+         .slice(0, 5);
+   }, [products]);
 
-  const generateExecutiveReport = () => {
-    const doc = new jsPDF();
-    const violet = [139, 92, 246]; // #8b5cf6
-    const darkText = [31, 41, 55]; // #1f2937
-    const lightText = [107, 114, 128]; // #6b7280
 
-    // --- HEADER ---
-    // Brand Bar
-    doc.setFillColor(violet[0], violet[1], violet[2]);
-    doc.rect(0, 0, 210, 5, 'F');
+   // --- PDF GENERATION ---
+   const generateExecutiveReport = () => {
+      const doc = new jsPDF();
+      const violet = [139, 92, 246];
+      const darkText = [31, 41, 55];
+      const lightText = [107, 114, 128];
 
-    // Title
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(24);
-    doc.setTextColor(darkText[0], darkText[1], darkText[2]);
-    doc.text("Reporte Ejecutivo", 14, 25);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    doc.setFont("helvetica", "normal");
-    doc.text("Tienda Anechka - POS & ERP System", 14, 31);
-    
-    // Meta Info (Right aligned)
-    const today = new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
-    doc.text(`Fecha de Corte: ${today}`, 196, 25, { align: 'right' });
-    doc.text(`Generado por: ${user?.full_name || 'Sistema'}`, 196, 31, { align: 'right' });
+      // --- HEADER ---
+      doc.setFillColor(violet[0], violet[1], violet[2]);
+      doc.rect(0, 0, 210, 5, 'F');
 
-    // --- EXECUTIVE SUMMARY (KPI CARDS SIMULATION) ---
-    doc.setFontSize(14);
-    doc.setTextColor(violet[0], violet[1], violet[2]);
-    doc.setFont("helvetica", "bold");
-    doc.text("Resumen Financiero Global", 14, 45);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(darkText[0], darkText[1], darkText[2]);
+      doc.text("Reporte Ejecutivo Empresarial", 14, 25);
 
-    // Helper to draw KPI Card
-    const drawCard = (x: number, title: string, value: string, sub: string, color: [number, number, number]) => {
-        doc.setFillColor(249, 250, 251); // Gray-50 background
-        doc.setDrawColor(229, 231, 235); // Border
-        doc.roundedRect(x, 50, 42, 30, 3, 3, 'FD');
-        
-        doc.setFontSize(8);
-        doc.setTextColor(100);
-        doc.text(title.toUpperCase(), x + 4, 58); // Title
-        
-        doc.setFontSize(12);
-        doc.setTextColor(darkText[0], darkText[1], darkText[2]);
-        doc.setFont("helvetica", "bold");
-        doc.text(value, x + 4, 68); // Value
+      doc.setFontSize(10);
+      doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+      doc.setFont("helvetica", "normal");
+      doc.text("Tienda Anechka - POS & ERP System", 14, 31);
+      doc.text(`Periodo Analizado: ${dateRange.start} al ${dateRange.end}`, 14, 36);
 
-        doc.setFontSize(7);
-        doc.setTextColor(color[0], color[1], color[2]);
-        doc.text(sub, x + 4, 76); // Subtitle/Trend
-    };
+      const today = new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
+      doc.text(`Generado: ${today}`, 196, 25, { align: 'right' });
+      doc.text(`Usuario: ${user?.full_name || 'Sistema'}`, 196, 31, { align: 'right' });
 
-    drawCard(14, "Utilidad Neta", `$${financials.netProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}`, financials.netProfit >= 0 ? "Rentable" : "Atencion", financials.netProfit >= 0 ? [16, 185, 129] : [239, 68, 68]);
-    drawCard(62, "Ingresos", `$${financials.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}`, "Ventas Brutas", [59, 130, 246]);
-    drawCard(110, "Egresos", `$${financials.totalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}`, "Gastos + Compras", [245, 158, 11]);
-    drawCard(158, "Margen", `${financials.margin.toFixed(1)}%`, "Retorno s/Venta", [139, 92, 246]);
+      // --- FINANCIAL SUMMARY ---
+      let y = 45;
+      doc.setFontSize(14);
+      doc.setTextColor(violet[0], violet[1], violet[2]);
+      doc.setFont("helvetica", "bold");
+      doc.text("1. Resumen Financiero", 14, y);
 
-    // --- WEEKLY CASH FLOW TABLE ---
-    doc.setFontSize(14);
-    doc.setTextColor(violet[0], violet[1], violet[2]);
-    doc.text("Flujo de Caja Semanal", 14, 95);
+      y += 10;
+      // Draw simple KPI table
+      autoTable(doc, {
+         startY: y,
+         head: [['Concepto', 'Monto', 'Indicador']],
+         body: [
+            ['Ingresos Totales (Ventas)', `$${financials.revenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, '100%'],
+            ['Egresos Operativos', `$${financials.outcome.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, `${(financials.revenue > 0 ? (financials.outcome / financials.revenue) * 100 : 0).toFixed(1)}%`],
+            ['Utilidad Neta', `$${financials.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, `${financials.margin.toFixed(1)}%`],
+         ],
+         theme: 'grid',
+         headStyles: { fillColor: [243, 244, 246], textColor: [31, 41, 55], fontStyle: 'bold' },
+         columnStyles: {
+            1: { halign: 'right', fontStyle: 'bold' },
+            2: { halign: 'center', fontSize: 8 }
+         },
+         styles: { fontSize: 10, cellPadding: 3 },
+      });
 
-    const tableData = weeklyData.map(d => [
-       d.day,
-       `$${d.income.toFixed(2)}`,
-       `$${d.expense.toFixed(2)}`,
-       `$${(d.income - d.expense).toFixed(2)}`
-    ]);
+      // @ts-ignore
+      y = doc.lastAutoTable.finalY + 15;
 
-    autoTable(doc, {
-        startY: 100,
-        head: [['Dia', 'Ingresos', 'Egresos', 'Balance']],
-        body: tableData,
-        theme: 'striped',
-        headStyles: { fillColor: [243, 244, 246], textColor: [31, 41, 55], fontStyle: 'bold' },
-        columnStyles: {
-            0: { fontStyle: 'bold' },
-            1: { halign: 'right', textColor: [22, 163, 74] }, // Green for Income
-            2: { halign: 'right', textColor: [220, 38, 38] }, // Red for Expense
-            3: { halign: 'right', fontStyle: 'bold' }
-        },
-        styles: { fontSize: 10 },
-        margin: { left: 14, right: 14 }
-    });
+      // --- CATEGORY ANALYSIS ---
+      doc.setFontSize(14);
+      doc.setTextColor(violet[0], violet[1], violet[2]);
+      doc.text("2. Ventas por Categoría", 14, y);
+      y += 5;
 
-    // @ts-ignore
-    let currentY = doc.lastAutoTable.finalY + 15;
+      autoTable(doc, {
+         startY: y,
+         head: [['Categoría', 'Venta Total', '% Participación']],
+         body: categoryData.map(c => [
+            c.name,
+            `$${c.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+            `${(financials.revenue > 0 ? (c.value / financials.revenue) * 100 : 0).toFixed(1)}%`
+         ]),
+         theme: 'striped',
+         headStyles: { fillColor: [249, 250, 251], textColor: [55, 65, 81] },
+         columnStyles: { 1: { halign: 'right' }, 2: { halign: 'center' } },
+         styles: { fontSize: 9 }
+      });
 
-    // --- RISKS & INSIGHTS ---
-    doc.setFontSize(14);
-    doc.setTextColor(violet[0], violet[1], violet[2]);
-    doc.text("Alertas y Top Productos", 14, currentY);
-    
-    currentY += 10;
+      // @ts-ignore
+      y = doc.lastAutoTable.finalY + 15;
 
-    // Split page in two columns logic
-    // Left: Stock Alerts
-    doc.setFontSize(12);
-    doc.setTextColor(darkText[0], darkText[1], darkText[2]);
-    doc.setFont("helvetica", "bold");
-    doc.text("Inventario Critico", 14, currentY);
-    
-    // Draw indicator box (Red) instead of emoji
-    doc.setFillColor(239, 68, 68);
-    doc.rect(54, currentY - 4, 4, 4, 'F'); 
-    
-    let alertY = currentY + 8;
-    if (lowStockItems.length === 0) {
-        doc.setFontSize(9);
-        doc.setTextColor(16, 185, 129);
-        doc.setFont("helvetica", "normal");
-        doc.text("Niveles de stock saludables.", 14, alertY);
-    } else {
-        lowStockItems.forEach(item => {
-            doc.setFontSize(9);
-            doc.setTextColor(239, 68, 68); // Red Title
-            doc.setFont("helvetica", "bold");
-            doc.text(`- ${item.name}`, 14, alertY);
-            
-            doc.setTextColor(100);
-            doc.setFont("helvetica", "normal");
-            doc.text(`  (Stock: ${item.stock_level} / Min: ${item.min_stock})`, 14, alertY + 4);
-            alertY += 10;
-        });
-    }
+      // --- PAYMENT METHODS ---
+      doc.setFontSize(14);
+      doc.setTextColor(violet[0], violet[1], violet[2]);
+      doc.text("3. Métodos de Pago", 14, y);
+      y += 5;
 
-    // Right: Top Products
-    doc.setFontSize(12);
-    doc.setTextColor(darkText[0], darkText[1], darkText[2]);
-    doc.setFont("helvetica", "bold");
-    doc.text("Top Ventas", 110, currentY);
-    
-    // Draw indicator box (Violet) instead of emoji
-    doc.setFillColor(139, 92, 246);
-    doc.rect(150, currentY - 4, 4, 4, 'F');
+      autoTable(doc, {
+         startY: y,
+         head: [['Método', 'Total Recaudado', '%']],
+         body: paymentMethodData.map(p => [
+            p.name,
+            `$${p.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+            `${(financials.revenue > 0 ? (p.value / financials.revenue) * 100 : 0).toFixed(1)}%`
+         ]),
+         theme: 'plain',
+         headStyles: { fillColor: [255, 255, 255], textColor: [55, 65, 81], lineColor: [200, 200, 200], lineWidth: { bottom: 0.1 } },
+         columnStyles: { 1: { halign: 'right' }, 2: { halign: 'center' } },
+         styles: { fontSize: 9 }
+      });
 
-    let topY = currentY + 8;
-    topProducts.forEach((prod, i) => {
-        doc.setFontSize(9);
-        doc.setTextColor(darkText[0], darkText[1], darkText[2]);
-        doc.setFont("helvetica", "normal");
-        doc.text(`${i + 1}. ${prod.name}`, 110, topY);
-        
-        doc.setTextColor(violet[0], violet[1], violet[2]);
-        doc.setFont("helvetica", "bold");
-        doc.text(`$${prod.total}`, 180, topY, { align: 'right' });
-        
-        doc.setFont("helvetica", "normal");
-        topY += 7;
-    });
+      // @ts-ignore
+      y = doc.lastAutoTable.finalY + 15;
 
-    // --- FOOTER & SIGNATURE ---
-    const footerY = 270;
-    doc.setDrawColor(200);
-    doc.setLineWidth(0.5);
-    doc.line(14, footerY, 80, footerY); // Line for signature
-    doc.line(116, footerY, 196, footerY); // Line for signature
+      // --- TOP PRODUCTS ---
+      doc.setFontSize(14);
+      doc.setTextColor(violet[0], violet[1], violet[2]);
+      doc.text("4. Top 5 Productos", 14, y);
+      y += 5;
 
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.text("Firma Gerencia", 14, footerY + 5);
-    doc.text("Firma Auditoria / Propietario", 116, footerY + 5);
+      autoTable(doc, {
+         startY: y,
+         head: [['Producto', 'Unidades', 'Venta Total']],
+         body: topProducts.map(p => [
+            p.name,
+            p.qty,
+            `$${p.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+         ]),
+         // ... styles
+      });
 
-    doc.save(`Reporte_Gerencial_${new Date().toISOString().split('T')[0]}.pdf`);
-  };
+      // Save
+      doc.save(`Reporte_Ejecutivo_${dateRange.start}_${dateRange.end}.pdf`);
+   };
 
-  const getTimeGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Buenos días';
-    if (hour < 18) return 'Buenas tardes';
-    return 'Buenas noches';
-  };
+   // COLORS for CHARTS
+   const COLORS = ['#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#3B82F6'];
 
-  return (
-    <div className="space-y-6 animate-fade-in-up">
-      <header className="mb-6 flex flex-col md:flex-row justify-between md:items-end gap-4">
-        <div>
-          <h2 className="text-3xl font-black text-gray-800 tracking-tight">{getTimeGreeting()}, {user?.full_name.split(' ')[0] || 'Gerencia'}.</h2>
-          <p className="text-gray-500 font-medium">Visión global financiera y operativa.</p>
-        </div>
-        <div className="flex gap-3">
-           <button 
-             onClick={generateExecutiveReport}
-             disabled={loading}
-             className="bg-gray-800 hover:bg-gray-900 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-gray-500/20 transition-all flex items-center gap-2 transform active:scale-95 text-sm"
-           >
-             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-             Reporte Ejecutivo PDF
-           </button>
-        </div>
-      </header>
+   const getTimeGreeting = () => {
+      const hour = new Date().getHours();
+      if (hour < 12) return 'Buenos días';
+      if (hour < 18) return 'Buenas tardes';
+      return 'Buenas noches';
+   };
 
-      {/* --- FINANCIAL KPIS (SCORE CARDS) --- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard 
-          title="Utilidad Neta (Est.)" 
-          value={`$${financials.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
-          trend={financials.netProfit >= 0 ? "Rentable" : "Déficit"}
-          icon="wallet"
-          color={financials.netProfit >= 0 ? "green" : "orange"}
-          isAlert={financials.netProfit < 0}
-        />
-        <KPICard 
-          title="Ingresos Totales" 
-          value={`$${financials.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
-          trend="Ventas Brutas"
-          icon="dollar"
-          color="blue"
-        />
-        <KPICard 
-          title="Egresos Operativos" 
-          value={`$${financials.totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
-          trend="Gastos + Compras"
-          icon="arrowDown"
-          color="purple"
-        />
-        <KPICard 
-          title="Margen Global" 
-          value={`${financials.margin.toFixed(1)}%`} 
-          trend="Retorno s/Ventas"
-          icon="percent"
-          color={financials.margin > 20 ? "green" : "orange"}
-        />
-      </div>
+   return (
+      <div className="space-y-6 animate-fade-in-up pb-10">
+         {/* HEADER & FILTERS */}
+         <header className="flex flex-col xl:flex-row justify-between xl:items-end gap-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <div>
+               <h2 className="text-3xl font-black text-gray-800 tracking-tight">{getTimeGreeting()}, {user?.full_name.split(' ')[0] || 'Gerencia'}.</h2>
+               <p className="text-gray-500 font-medium">Tablero de Control y Análisis Financiero.</p>
+            </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        
-        {/* LEFT COLUMN: FINANCIAL CHART */}
-        <div className="lg:col-span-2">
-           <GlassCard className="h-full flex flex-col min-h-[320px]">
-              <div className="flex justify-between items-center mb-6">
-                 <div>
-                    <h3 className="font-bold text-lg text-gray-800">Flujo de Caja Semanal</h3>
-                    <p className="text-xs text-gray-500">Comparativa Ingresos vs Egresos</p>
-                 </div>
-                 <div className="flex gap-2 text-[10px] font-bold">
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-brand-primary"></span> Ingreso</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400"></span> Gasto</span>
-                 </div>
-              </div>
-              
-              {/* DUAL BAR CHART */}
-              <div className="flex-1 flex items-end justify-between gap-2 sm:gap-4 px-2 pb-2">
-                 {weeklyData.map((d, i) => (
-                    <DualChartBar 
-                      key={i} 
-                      label={d.day} 
-                      income={d.income} 
-                      expense={d.expense} 
-                      maxVal={Math.max(...weeklyData.map(w => Math.max(w.income, w.expense)), 100)} // normalize
-                    />
-                 ))}
-              </div>
-           </GlassCard>
-        </div>
+            <div className="flex flex-wrap gap-4 items-center">
+               <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-200">
+                  <span className="text-xs font-bold text-gray-400 uppercase px-2">Periodo:</span>
+                  <input
+                     type="date"
+                     value={dateRange.start}
+                     onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                     className="bg-white border-0 rounded-lg text-sm font-bold text-gray-700 focus:ring-2 focus:ring-violet-500 py-1.5"
+                  />
+                  <span className="text-gray-300 mx-1">➜</span>
+                  <input
+                     type="date"
+                     value={dateRange.end}
+                     onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                     className="bg-white border-0 rounded-lg text-sm font-bold text-gray-700 focus:ring-2 focus:ring-violet-500 py-1.5"
+                  />
+               </div>
 
-        {/* RIGHT COLUMN: ALERTS & TOP PRODUCTS */}
-        <div className="lg:col-span-1 space-y-4">
-           
-           {/* Top Products Mini Widget */}
-           <GlassCard className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                 <h3 className="font-bold text-gray-800">Top Productos</h3>
-                 <span className="text-xs text-brand-primary font-bold">Más Vendidos</span>
-              </div>
-              <div className="space-y-3">
-                 {topProducts.map((p, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-sm border-b border-gray-100 last:border-0 pb-2 last:pb-0">
-                       <div className="flex items-center gap-2">
-                          <span className="font-bold text-gray-400 text-xs">#{idx+1}</span>
-                          <span className="font-medium text-gray-700 truncate max-w-[120px]">{p.name}</span>
-                       </div>
-                       <span className="font-bold text-green-600">+${p.total.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
-                    </div>
-                 ))}
-                 {topProducts.length === 0 && <p className="text-xs text-gray-400 italic">No hay ventas registradas.</p>}
-              </div>
-           </GlassCard>
+               <button
+                  onClick={generateExecutiveReport}
+                  disabled={loading}
+                  className="bg-violet-600 hover:bg-violet-700 text-white px-5 py-3 rounded-xl font-bold shadow-lg shadow-violet-500/30 transition-all flex items-center gap-2 transform active:scale-95 text-sm"
+               >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
+                  Exportar Reporte PDF
+               </button>
+            </div>
+         </header>
 
-           {/* Alerts Widget */}
-           <GlassCard className="bg-red-50/50 border-red-100">
-              <div className="flex items-center gap-2 mb-3 text-red-700">
-                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
-                 <h3 className="font-bold text-md">Stock Crítico ({lowStockItems.length})</h3>
-              </div>
-              
-              <div className="space-y-2">
-                 {lowStockItems.length === 0 ? (
-                   <div className="text-center py-4 text-green-600">
-                      <p className="text-xs font-bold">¡Todo en orden!</p>
-                   </div>
-                 ) : (
-                   lowStockItems.map(item => (
-                     <div key={item.id} className="flex items-center justify-between p-2 bg-white/60 rounded-lg border border-red-100 shadow-sm">
-                        <span className="text-xs font-bold text-gray-700 truncate max-w-[150px]">{item.name}</span>
+         {/* KPI GRID */}
+         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <KPICard
+               title="Utilidad Neta"
+               value={`$${financials.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+               trend={financials.profit >= 0 ? "Rentable" : "Déficit"}
+               icon="wallet"
+               color={financials.profit >= 0 ? "green" : "red"}
+               isAlert={financials.profit < 0}
+            />
+            <KPICard
+               title="Ventas Totales"
+               value={`$${financials.revenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+               trend={`${filteredData.sales.length} transacciones`}
+               icon="dollar"
+               color="blue"
+            />
+            <KPICard
+               title="Gastos Operativos"
+               value={`$${financials.outcome.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+               trend={`${filteredData.expenses.length} registros`}
+               icon="arrowDown"
+               color="orange"
+            />
+            <KPICard
+               title="Margen Periodo"
+               value={`${financials.margin.toFixed(1)}%`}
+               trend="Retorno s/Venta"
+               icon="percent"
+               color={financials.margin > 20 ? "purple" : "gray"}
+            />
+         </div>
+
+         {/* CHARTS ROW 1 */}
+         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* SALES TREND CHART */}
+            <GlassCard className="lg:col-span-2 min-h-[400px] flex flex-col p-6">
+               <h3 className="font-bold text-lg text-gray-800 mb-4">Tendencia de Ingresos vs Egresos</h3>
+               <div className="flex-1 w-full min-h-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                     <BarChart data={dailyData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} dy={10} minTickGap={30} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} tickFormatter={(value) => `$${value}`} />
+                        <Tooltip
+                           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                           cursor={{ fill: '#F3F4F6' }}
+                           formatter={(value: any) => [`$${value.toLocaleString()}`, undefined]}
+                        />
+                        <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                        <Bar name="Ingresos" dataKey="income" fill="#8B5CF6" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                        <Bar name="Egresos" dataKey="expense" fill="#F59E0B" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                     </BarChart>
+                  </ResponsiveContainer>
+               </div>
+            </GlassCard>
+
+            {/* CATEGORY DONUT CHART */}
+            <GlassCard className="lg:col-span-1 min-h-[400px] flex flex-col p-6">
+               <h3 className="font-bold text-lg text-gray-800 mb-4">Ventas por Categoría</h3>
+               <div className="flex-1 w-full min-h-0 flex items-center justify-center relative">
+                  <ResponsiveContainer width="100%" height={300}>
+                     <PieChart>
+                        <Pie
+                           data={categoryData}
+                           cx="50%"
+                           cy="50%"
+                           innerRadius={60}
+                           outerRadius={80}
+                           paddingAngle={5}
+                           dataKey="value"
+                        >
+                           {categoryData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                           ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(value: any) => `$${value.toLocaleString()}`} />
+                        <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                     </PieChart>
+                  </ResponsiveContainer>
+                  {categoryData.length === 0 && <p className="absolute text-gray-400 text-sm">Sin datos</p>}
+               </div>
+            </GlassCard>
+         </div>
+
+         {/* CHARTS ROW 2: DETAILS */}
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* TOP PRODUCTS */}
+            <GlassCard className="p-6">
+               <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-lg text-gray-800">Productos Estrella</h3>
+                  <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2 py-1 rounded-md">Top 5</span>
+               </div>
+               <div className="space-y-4">
+                  {topProducts.map((p, idx) => (
+                     <div key={idx} className="flex items-center justify-between group cursor-default hover:bg-gray-50/50 p-2 rounded-lg transition-colors">
+                        <div className="flex items-center gap-3">
+                           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {idx + 1}
+                           </div>
+                           <div>
+                              <p className="font-bold text-gray-700 text-sm">{p.name}</p>
+                              <p className="text-xs text-gray-400">{p.qty} unidades vendidas</p>
+                           </div>
+                        </div>
+                        <span className="font-bold text-gray-800 text-sm">${p.total.toLocaleString()}</span>
+                     </div>
+                  ))}
+                  {topProducts.length === 0 && <p className="text-gray-400 italic text-sm text-center py-4">No hay ventas en este periodo</p>}
+               </div>
+            </GlassCard>
+
+            {/* STOCK ALERTS (ALWAYS RELEVANT) */}
+            <GlassCard className="p-6 bg-red-50/30 border-red-100/50">
+               <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-lg text-red-800">Alertas de Stock</h3>
+                  <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Crítico</span>
+               </div>
+               <div className="space-y-3">
+                  {lowStockItems.map((p, idx) => (
+                     <div key={idx} className="flex items-center justify-between p-3 bg-white rounded-xl border border-red-100 shadow-sm">
+                        <div>
+                           <p className="font-bold text-gray-700 text-sm">{p.name}</p>
+                           <p className="text-xs text-red-400 font-medium">Stock Mínimo: {p.min_stock}</p>
+                        </div>
                         <div className="text-right">
-                           <span className="block text-xs font-black text-red-600">{item.stock_level} Unds</span>
+                           <span className="block text-2xl font-black text-red-500 leading-none">{p.stock_level}</span>
+                           <span className="text-[10px] text-gray-400 uppercase font-bold">Unidades</span>
                         </div>
                      </div>
-                   ))
-                 )}
-              </div>
-           </GlassCard>
-        </div>
+                  ))}
+                  {lowStockItems.length === 0 && (
+                     <div className="text-center py-8">
+                        <p className="text-green-600 font-bold">¡Inventario saludable!</p>
+                        <p className="text-xs text-green-500">No hay productos bajo mínimo.</p>
+                     </div>
+                  )}
+               </div>
+            </GlassCard>
+         </div>
       </div>
-    </div>
-  );
+   );
 };
 
 // --- SUBCOMPONENTS ---
 
 const KPICard = ({ title, value, trend, icon, color, isAlert }: any) => {
    const colors: any = {
-      green: 'from-emerald-500 to-teal-600 shadow-emerald-500/20',
-      blue: 'from-blue-500 to-indigo-600 shadow-blue-500/20',
-      purple: 'from-violet-500 to-purple-600 shadow-purple-500/20',
-      orange: 'from-orange-500 to-red-500 shadow-orange-500/20',
+      green: 'from-emerald-500 to-teal-600 shadow-emerald-500/20 text-emerald-600',
+      blue: 'from-blue-500 to-indigo-600 shadow-blue-500/20 text-blue-600',
+      purple: 'from-violet-500 to-purple-600 shadow-purple-500/20 text-violet-600',
+      orange: 'from-orange-500 to-red-500 shadow-orange-500/20 text-orange-600',
+      red: 'from-red-500 to-rose-600 shadow-red-500/20 text-red-600',
+      gray: 'from-gray-500 to-gray-600 shadow-gray-500/20 text-gray-600',
    };
 
    const iconMap: any = {
-      dollar: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
-      wallet: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>,
-      arrowDown: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>,
-      percent: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" x2="5" y1="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>,
-      alert: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+      dollar: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>,
+      wallet: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>,
+      arrowDown: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="5" y2="19" /><polyline points="19 12 12 19 5 12" /></svg>,
+      percent: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" x2="5" y1="5" y2="19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></svg>,
    };
 
    return (
-     <div className={`relative overflow-hidden rounded-2xl p-6 bg-white shadow-xl border border-white/50 group transition-all hover:-translate-y-1 ${isAlert ? 'ring-2 ring-red-400 ring-offset-2' : ''}`}>
-        <div className="relative z-10">
-           <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${colors[color]} flex items-center justify-center text-white mb-4 shadow-lg`}>
-              {iconMap[icon]}
-           </div>
-           <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-1">{title}</p>
-           <h3 className="text-2xl font-black text-gray-800">{value}</h3>
-           <p className={`text-xs font-bold mt-2 ${isAlert ? 'text-red-500' : 'text-gray-400'}`}>{trend}</p>
-        </div>
-        {/* Decor */}
-        <div className={`absolute -right-4 -bottom-4 w-24 h-24 rounded-full bg-gradient-to-br ${colors[color]} opacity-10 group-hover:scale-110 transition-transform`}></div>
-     </div>
-   );
-};
-
-const DualChartBar = ({ label, income, expense, maxVal }: any) => {
-   const incomePercent = maxVal > 0 ? (income / maxVal) * 100 : 0;
-   const expensePercent = maxVal > 0 ? (expense / maxVal) * 100 : 0;
-
-   return (
-      <div className="flex flex-col items-center justify-end h-full gap-2 group w-full">
-         <div className="relative w-full flex justify-center items-end h-full gap-1">
-            {/* Expense Bar */}
-            <div 
-              className="w-3 bg-orange-300 rounded-t-sm hover:bg-orange-400 transition-all relative group/exp"
-              style={{ height: `${expensePercent}%` }}
-            >
-               <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover/exp:opacity-100 transition-opacity z-20 pointer-events-none">
-                  -${expense}
-               </div>
+      <div className={`relative overflow-hidden rounded-2xl p-6 bg-white shadow-sm border border-gray-100 group transition-all hover:shadow-lg hover:-translate-y-1 ${isAlert ? 'ring-2 ring-red-400 ring-offset-2' : ''}`}>
+         <div className="relative z-10 flex justify-between items-start">
+            <div>
+               <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">{title}</p>
+               <h3 className="text-2xl font-black text-gray-800 tracking-tight">{value}</h3>
+               <p className={`text-xs font-bold mt-2 flex items-center gap-1 ${colors[color].split(' ').pop()}`}>
+                  {trend}
+               </p>
             </div>
-            
-            {/* Income Bar */}
-            <div 
-              className="w-4 bg-brand-primary rounded-t-md shadow-lg shadow-brand-primary/20 hover:bg-brand-secondary transition-all relative group/inc"
-              style={{ height: `${incomePercent}%` }}
-            >
-               <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover/inc:opacity-100 transition-opacity z-20 pointer-events-none">
-                  +${income}
-               </div>
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${colors[color].split(' ').slice(0, 2).join(' ')} flex items-center justify-center text-white shadow-lg transform group-hover:scale-110 transition-transform`}>
+               {iconMap[icon]}
             </div>
          </div>
-         <span className="text-[10px] font-bold text-gray-400 uppercase">{label}</span>
       </div>
    );
 };

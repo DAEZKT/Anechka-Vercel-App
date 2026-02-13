@@ -2,9 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from '../components/GlassCard';
 import { salesService, expenseService, userService, productService } from '../services/supabaseService';
-import { SaleHeader, Expense, User, SaleDetail, Product, ExpensePayment } from '../types';
+import { SaleHeader, Expense, User, SaleDetail, Product, ExpensePayment, PaymentMethodType } from '../types';
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getLocalDateString, toLocalDateString, getBusinessDateString, formatCurrency } from '../utils/dateUtils';
 
 interface CashClosePageProps {
    user: User;
@@ -13,7 +14,7 @@ interface CashClosePageProps {
 // --- ICONS ---
 const Icons = {
    Wallet: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>,
-   Bank: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18" /><path d="M5 21v-7" /><path d="M19 21v-7" /><path d="M10 9L3 21" /><path d="M14 9l7 12" /><path d="M2 6h20" /><path d="M12 2v4" /><path d="m2 6 10-4 10 4" /></svg>,
+   Bank: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" x2="21" y1="22" y2="22" /><line x1="6" x2="6" y1="18" y2="11" /><line x1="10" x2="10" y1="18" y2="11" /><line x1="14" x2="14" y1="18" y2="11" /><line x1="18" x2="18" y1="18" y2="11" /><polygon points="12 2 20 7 4 7" /></svg>,
    TrendUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>,
    TrendDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7" /><polyline points="16 17 22 17 22 11" /></svg>,
    Printer: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect width="12" height="8" x="6" y="14" /></svg>,
@@ -22,7 +23,7 @@ const Icons = {
 
 export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
    const [loading, setLoading] = useState(false);
-   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+   const [selectedDate, setSelectedDate] = useState(getLocalDateString());
 
    // Data State
    const [metrics, setMetrics] = useState({
@@ -35,7 +36,13 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
    });
 
    const [methodBreakdown, setMethodBreakdown] = useState<Record<string, number>>({});
-   const [transfersDetail, setTransfersDetail] = useState<{ method: string, amount: number, ref: string }[]>([]);
+   const [categoryBreakdown, setCategoryBreakdown] = useState<Record<PaymentMethodType, number>>({
+      CASH: 0,
+      TRANSFER: 0,
+      CARD: 0,
+      OTHER: 0
+   });
+   const [transfersDetail, setTransfersDetail] = useState<{ method: string, type: PaymentMethodType, amount: number, ref: string }[]>([]);
    const [sellerPerformance, setSellerPerformance] = useState<{ name: string, amount: number, tickets: number }[]>([]);
    const [productVelocity, setProductVelocity] = useState<{ name: string, qty: number, total: number }[]>([]);
 
@@ -62,14 +69,14 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
 
          // 1. FILTER BY DATE (Local Date String Comparison)
          const dailySales = allSales.filter(s => {
-            // Convert timestamp to YYYY-MM-DD
-            const saleDate = new Date(s.created_at).toISOString().split('T')[0];
+            // Convert timestamp to YYYY-MM-DD using local timezone
+            const saleDate = toLocalDateString(s.created_at);
             return saleDate === selectedDate && s.status === 'COMPLETED';
          });
 
          const dailyExpenses = allExpenses.filter(e => {
-            // e.date is already YYYY-MM-DD
-            return e.date === selectedDate;
+            // Normalize e.date using our utility to extract YYYY-MM-DD safely
+            return getBusinessDateString(e.date) === selectedDate;
          });
 
          // 2. PROCESS SALES & PAYMENTS
@@ -81,6 +88,14 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
          const transfersList: any[] = [];
          const sellersMap: Record<string, { amount: number, tickets: number }> = {};
 
+         // Category aggregation (CASH, TRANSFER, CARD, OTHER)
+         const categoryTotals: Record<PaymentMethodType, number> = {
+            CASH: 0,
+            TRANSFER: 0,
+            CARD: 0,
+            OTHER: 0
+         };
+
          dailySales.forEach(sale => {
             totalRevenue += sale.total_amount;
 
@@ -91,35 +106,63 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
             sellersMap[sellerName].amount += sale.total_amount;
             sellersMap[sellerName].tickets += 1;
 
-            // Payment Parsing
-            // Expected format from service: "Method Name: $100.00, Method 2: $50.00"
+            // Payment Parsing - NEW FORMAT: "TYPE|Method Name: $Amount, TYPE|Method Name: $Amount"
             const parts = sale.payment_method_snapshot.split(', ');
             parts.forEach(part => {
                if (part.includes(':')) {
-                  const [methodName, amountStr] = part.split(': ');
-                  // Robust cleanup of amount string (remove $ and commas)
+                  let type: PaymentMethodType = 'OTHER';
+                  let methodName = '';
+                  let amountStr = '';
+
+                  // Check if new format (TYPE|Name: $Amount)
+                  if (part.includes('|')) {
+                     const [typeAndName, amount] = part.split(': ');
+                     const [typeStr, name] = typeAndName.split('|');
+                     type = typeStr as PaymentMethodType;
+                     methodName = name.trim();
+                     amountStr = amount;
+                  } else {
+                     // Legacy format (Name: $Amount) - infer type from name
+                     const [name, amount] = part.split(': ');
+                     methodName = name.trim();
+                     amountStr = amount;
+
+                     // Heuristic type detection for legacy data
+                     const lowerName = methodName.toLowerCase();
+                     if (lowerName.includes('efectivo') || lowerName.includes('cash') || lowerName.includes('caja')) {
+                        type = 'CASH';
+                     } else if (lowerName.includes('transfer') || lowerName.includes('banco') || lowerName.includes('cuenta')) {
+                        type = 'TRANSFER';
+                     } else if (lowerName.includes('tarjeta') || lowerName.includes('card') || lowerName.includes('pos')) {
+                        type = 'CARD';
+                     } else {
+                        type = 'OTHER';
+                     }
+                  }
+
+                  // Parse amount
                   const cleanAmountStr = amountStr.replace(/[^0-9.-]+/g, "");
                   const amount = parseFloat(cleanAmountStr) || 0;
-                  const name = methodName.trim();
 
                   // Aggregate by Method Name
-                  methodsMap[name] = (methodsMap[name] || 0) + amount;
+                  methodsMap[methodName] = (methodsMap[methodName] || 0) + amount;
 
-                  // Classify Type (Heuristic based on name)
-                  const lowerName = name.toLowerCase();
-                  if (lowerName.includes('efectivo') || lowerName.includes('cash') || lowerName.includes('caja')) {
+                  // Aggregate by Category Type
+                  categoryTotals[type] += amount;
+
+                  // Classify for totals
+                  if (type === 'CASH') {
                      incomeCash += amount;
                   } else {
                      incomeDigital += amount;
 
-                     // Track Transfers specifically
-                     if (lowerName.includes('transfer') || lowerName.includes('banco') || lowerName.includes('cuenta')) {
-                        transfersList.push({
-                           method: name,
-                           amount: amount,
-                           ref: `Ticket #${sale.id.slice(-6)}`
-                        });
-                     }
+                     // Track all non-cash as transfers for detailed view
+                     transfersList.push({
+                        method: methodName,
+                        type: type,
+                        amount: amount,
+                        ref: `Ticket #${sale.id.slice(-6)}`
+                     });
                   }
                }
             });
@@ -127,23 +170,40 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
 
          // Filter Payments
          const dailyPayments = allPayments.filter(p => {
-            const payDate = new Date(p.date).toISOString().split('T')[0];
+            const payDate = getBusinessDateString(p.date);
             return payDate === selectedDate;
          });
 
          // 3. PROCESS EXPENSES (Cash vs Other)
          let outcomeCash = 0;
+
+         console.log('🔍 Debugging Expenses:', {
+            totalExpenses: allExpenses.length,
+            dailyExpenses: dailyExpenses.length,
+            dailyExpensesData: dailyExpenses,
+            dailyPayments: dailyPayments.length
+         });
+
          dailyExpenses.forEach(exp => {
+            console.log('💰 Processing expense:', {
+               supplier: exp.supplier,
+               total: exp.total,
+               payment_type: exp.payment_type,
+               date: exp.date
+            });
+
             // Assuming 'CONTADO' implies Cash Drawer outflow. 
             // 'CREDITO' doesn't affect cash flow today (unless paid, but that logic is in payments table)
             if (exp.payment_type === 'CONTADO') {
                outcomeCash += exp.total;
+               console.log('✅ Added to outcomeCash:', exp.total);
             }
          });
 
          // Add Credit Payments to Outflow
          dailyPayments.forEach(pay => {
             outcomeCash += pay.amount;
+            console.log('💳 Added payment to outflow:', pay.amount);
          });
 
          // 4. PROCESS TOP PRODUCTS
@@ -181,6 +241,7 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
          });
 
          setMethodBreakdown(methodsMap);
+         setCategoryBreakdown(categoryTotals);
          setTransfersDetail(transfersList);
          setSellerPerformance(Object.entries(sellersMap).map(([name, val]) => ({ name, ...val })));
          setProductVelocity(topItems);
@@ -197,145 +258,202 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
 
    const generateCloseReport = () => {
       const doc = new jsPDF();
-      const violet: [number, number, number] = [139, 92, 246];
-      const darkText: [number, number, number] = [31, 41, 55];
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      const margin = 15;
 
-      // --- HEADER ---
-      doc.setFillColor(violet[0], violet[1], violet[2]);
-      doc.rect(0, 0, 210, 5, 'F');
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(22);
-      doc.setTextColor(darkText[0], darkText[1], darkText[2]);
-      doc.text("Cierre de Caja Diario", 14, 20);
+      // COLORS
+      const brandColor: [number, number, number] = [79, 70, 229]; // Indigo 600
+      const secondaryColor: [number, number, number] = [107, 114, 128]; // Gray 500
+      const accentColor: [number, number, number] = [16, 185, 129]; // Emerald 500
+      const dangerColor: [number, number, number] = [239, 68, 68]; // Red 500
+
+      // HELPER: Draw Card
+      const drawCard = (x: number, y: number, w: number, h: number, title: string, value: string, color: [number, number, number]) => {
+         doc.setDrawColor(229, 231, 235);
+         doc.setFillColor(255, 255, 255);
+         doc.roundedRect(x, y, w, h, 3, 3, 'FD');
+
+         // Title
+         doc.setFontSize(7);
+         doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+         doc.setFont('helvetica', 'bold');
+         doc.text(title.toUpperCase(), x + 5, y + 8);
+
+         // Value
+         doc.setFontSize(12);
+         doc.setTextColor(color[0], color[1], color[2]);
+         doc.text(value, x + 5, y + 18);
+      };
+
+      // --- HERO HEADER ---
+      doc.setFillColor(brandColor[0], brandColor[1], brandColor[2]);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+      doc.text("REPORTE DE CIERRE", margin, 20);
+
       doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Fecha: ${selectedDate} | Generado por: ${user.full_name}`, 14, 26);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`ANECKA POS  •  ${selectedDate}`, margin, 28);
 
-      let currentY = 35;
-
-      // --- FINANCIAL SUMMARY BOX ---
-      doc.setDrawColor(200);
-      doc.setFillColor(249, 250, 251);
-      doc.roundedRect(14, currentY, 182, 35, 3, 3, 'FD');
-
-      // Header Row in Box
-      doc.setFontSize(9);
-      doc.setTextColor(100);
-      doc.text("Efectivo en Caja (Neto)", 20, currentY + 8);
-      doc.text("(+) Digital / Bancos", 80, currentY + 8);
-      doc.text("(=) BALANCE TOTAL", 140, currentY + 8);
-
-      // Value Row in Box
-      doc.setFontSize(14);
-
-      // 1. Efectivo Neto
-      doc.setTextColor(22, 163, 74); // Green
-      doc.text(`$${metrics.theoreticalCash.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 20, currentY + 18);
-
-      // 2. Digital
-      doc.setTextColor(37, 99, 235); // Blue
-      doc.text(`+ $${metrics.digitalSales.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 80, currentY + 18);
-
-      // 3. Balance Total (Result)
-      doc.setTextColor(139, 92, 246); // Violet Brand
-      doc.setFont("helvetica", "bold");
-      doc.text(`$${balanceTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 140, currentY + 18);
-
-      // Breakdown Row (Small)
       doc.setFontSize(8);
-      doc.setTextColor(150);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Nota: Efectivo Neto = Ingresos Efec. ($${metrics.cashSales.toFixed(2)}) - Gastos Caja ($${metrics.cashExpenses.toFixed(2)})`, 20, currentY + 28);
+      doc.text(`GENERADO POR: ${user.full_name.toUpperCase()}`, pageWidth - margin, 18, { align: 'right' });
+      doc.text(`FECHA IMPRESIÓN: ${new Date().toLocaleString()}`, pageWidth - margin, 26, { align: 'right' });
 
-      currentY += 45;
+      let currentY = 50;
 
-      // --- SALES BY SELLER ---
-      doc.setFontSize(12);
-      doc.setTextColor(violet[0], violet[1], violet[2]);
-      doc.text("Desempeño por Vendedor", 14, currentY);
+      // --- FINANCIAL HIGHLIGHTS ---
+      // A Row of 3 Cards
+      const cardWidth = (pageWidth - (margin * 2) - 10) / 3;
 
-      autoTable(doc, {
-         startY: currentY + 5,
-         head: [['Vendedor', 'Tickets', 'Venta Total']],
-         body: sellerPerformance.map(s => [s.name, s.tickets, `$${s.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`]),
-         theme: 'striped',
-         headStyles: { fillColor: [243, 244, 246], textColor: darkText, fontStyle: 'bold' },
-         styles: { fontSize: 9 },
-         margin: { left: 14, right: 14 }
+      // 1. Total Balance
+      drawCard(margin, currentY, cardWidth, 25, "BALANCE TOTAL", `$${balanceTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, brandColor);
+
+      // 2. Cash In Hand
+      drawCard(margin + cardWidth + 5, currentY, cardWidth, 25, "EFECTIVO EN CAJA", `$${metrics.theoreticalCash.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, accentColor);
+
+      // 3. Digital
+      drawCard(margin + (cardWidth * 2) + 10, currentY, cardWidth, 25, "DIGITAL / BANCOS", `$${metrics.digitalSales.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, [59, 130, 246]);
+
+      currentY += 35;
+
+      // --- DETAILED BREAKDOWN SECTION ---
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold');
+      doc.text("RESUMEN DE OPERACIONES", margin, currentY);
+
+      doc.setLineWidth(0.5);
+      doc.setDrawColor(brandColor[0], brandColor[1], brandColor[2]);
+      doc.line(margin, currentY + 3, margin + 65, currentY + 3);
+
+      currentY += 12;
+
+      // Manually drawing a summary table for better control than autoTable for this specific part
+      const summaryData = [
+         ['(+) Ventas Totales', metrics.totalSales],
+         ['(+) Ingresos Efectivo', metrics.cashSales],
+         ['(-) Gastos Efectivo', metrics.cashExpenses],
+         ['(=) Neto Efectivo', metrics.theoreticalCash]
+      ];
+
+      summaryData.forEach((row, i) => {
+         const y = currentY + (i * 7);
+         doc.setFontSize(9);
+         doc.setTextColor(60, 60, 60);
+         doc.setFont('helvetica', i === 3 ? 'bold' : 'normal'); // Bold total
+         doc.text(row[0] as string, margin + 5, y);
+
+         const val = row[1] as number;
+         const valStr = `$${val.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+         // Align right
+         doc.text(valStr, pageWidth / 2, y, { align: 'right' });
       });
 
-      // @ts-ignore
-      currentY = doc.lastAutoTable.finalY + 15;
+      // --- AUTO TABLES ---
 
-      // --- PAYMENT BREAKDOWN ---
-      doc.setFontSize(12);
-      doc.setTextColor(violet[0], violet[1], violet[2]);
-      doc.text("Desglose de Cobros y Transferencias", 14, currentY);
-
-      const paymentRows = Object.entries(methodBreakdown).map(([method, amount]) => [
-         method,
-         `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-      ]);
+      // 1. Sales by Seller (Right side of Summary? No, below is safer for PDF flow)
+      currentY += 35;
 
       autoTable(doc, {
-         startY: currentY + 5,
-         head: [['Método de Pago', 'Monto']],
-         body: paymentRows,
+         startY: currentY,
+         head: [['VENDEDOR', 'TICKETS', 'TOTAL VENDIDO']],
+         body: sellerPerformance.map(s => [
+            s.name.toUpperCase(),
+            s.tickets,
+            `$${s.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+         ]),
          theme: 'grid',
-         headStyles: { fillColor: [243, 244, 246], textColor: darkText },
-         margin: { left: 14, right: 100 } // Half width
+         headStyles: { fillColor: brandColor, textColor: 255, fontSize: 8, fontStyle: 'bold' },
+         styles: { fontSize: 8, cellPadding: 3 },
+         columnStyles: { 2: { halign: 'right' } },
+         margin: { left: margin, right: margin }
       });
 
-      // --- EXPENSES (Side by Side if possible, but autoTable manages Y automatically) ---
+      // @ts-ignore
+      currentY = doc.lastAutoTable.finalY + 10;
+
+      // 2. Payment Methods Summary
+      doc.setFontSize(10);
+      doc.setTextColor(brandColor[0], brandColor[1], brandColor[2]);
+      doc.text("DESGLOSE DE PAGOS", margin, currentY);
+      currentY += 5;
+
+      const paymentRows = Object.entries(methodBreakdown).map(([m, a]) => [m, `$${(a as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}`]);
+
+      autoTable(doc, {
+         startY: currentY,
+         head: [['MÉTODO', 'MONTO']],
+         body: paymentRows,
+         theme: 'striped',
+         headStyles: { fillColor: [55, 65, 81], textColor: 255, fontSize: 8 },
+         styles: { fontSize: 8 },
+         columnStyles: { 1: { halign: 'right' } },
+         margin: { left: margin, right: margin }
+      });
+
       // @ts-ignore
       currentY = doc.lastAutoTable.finalY + 15;
 
-      doc.setFontSize(12);
-      doc.setTextColor(220, 38, 38); // Red
-      doc.text("Egresos de Caja y Abonos", 14, currentY);
+      // 3. Expenses
+      doc.setFontSize(10);
+      doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
+      doc.text("EGRESOS Y ABONOS (FONDO DE CAJA)", margin, currentY);
+      currentY += 5;
 
-      const cashExpenseRows = expensesList.filter(e => e.payment_type === 'CONTADO').map(e => [
-         e.sub_account,
-         e.supplier,
-         `$${e.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-      ]);
+      const expenseRows = [
+         ...expensesList.filter(e => e.payment_type === 'CONTADO').map(e => [e.sub_account, e.supplier.substring(0, 20), `$${e.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`]),
+         ...expensePaymentsList.map(p => ['Pago Crédito', (p.note || 'Sin Nota'), `$${p.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`])
+      ];
 
-      const creditPaymentRows = expensePaymentsList.map(p => [
-         `Abono: ${p.note || ''}`,
-         'Pago Crédito',
-         `$${p.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-      ]);
-
-      const allOutflows = [...cashExpenseRows, ...creditPaymentRows];
-
-      if (allOutflows.length > 0) {
-         autoTable(doc, {
-            startY: currentY + 5,
-            head: [['Concepto', 'Proveedor', 'Monto']],
-            body: allOutflows,
-            theme: 'striped',
-            headStyles: { fillColor: [254, 226, 226], textColor: [185, 28, 28] }, // Red tint
-            styles: { fontSize: 9 }
-         });
-      } else {
-         doc.setFontSize(10);
+      if (expenseRows.length === 0) {
+         doc.setFontSize(9);
          doc.setTextColor(150);
-         doc.text("Sin egresos de caja registrados hoy.", 14, currentY + 10);
+         doc.text("No se registraron egresos de caja.", margin, currentY + 5);
          currentY += 10;
+      } else {
+         autoTable(doc, {
+            startY: currentY,
+            head: [['CONCEPTO', 'DETALLE', 'MONTO']],
+            body: expenseRows,
+            theme: 'striped',
+            headStyles: { fillColor: dangerColor, textColor: 255, fontSize: 8 },
+            styles: { fontSize: 8 },
+            columnStyles: { 2: { halign: 'right' } },
+            margin: { left: margin, right: margin }
+         });
+         // @ts-ignore
+         currentY = doc.lastAutoTable.finalY + 10;
       }
 
-      // --- SIGNATURES ---
-      const pageHeight = doc.internal.pageSize.height;
-      doc.setDrawColor(150);
-      doc.line(20, pageHeight - 40, 90, pageHeight - 40);
-      doc.line(120, pageHeight - 40, 190, pageHeight - 40);
+      // --- SIGNATURE FOOTER ---
+      const footerY = pageHeight - 30;
 
-      doc.setFontSize(8);
+      doc.setDrawColor(200);
+      doc.setLineWidth(0.5);
+
+      // Line 1
+      doc.line(margin + 10, footerY, margin + 70, footerY);
+      doc.setFontSize(7);
       doc.setTextColor(100);
-      doc.text("Firma Cajero/Vendedor", 20, pageHeight - 35);
-      doc.text("Firma Supervisor/Contador", 120, pageHeight - 35);
+      doc.text("FIRMA RESPONSABLE DE CAJA", margin + 40, footerY + 5, { align: 'center' });
 
-      doc.save(`Cierre_Caja_${selectedDate}.pdf`);
+      // Line 2
+      doc.line(pageWidth - margin - 70, footerY, pageWidth - margin - 10, footerY);
+      doc.text("FIRMA SUPERVISOR / AUDITOR", pageWidth - margin - 40, footerY + 5, { align: 'center' });
+
+      // Brand Footer
+      doc.setFillColor(245, 245, 245);
+      doc.rect(0, pageHeight - 12, pageWidth, 12, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(150);
+      doc.text("Documento generado automáticamente por Anechka POS.", margin, pageHeight - 5);
+      doc.text(`${new Date().getFullYear()} © Todos los derechos reservados.`, pageWidth - margin, pageHeight - 5, { align: 'right' });
+
+      doc.save(`Cierre_Total_${selectedDate}.pdf`);
    };
 
    return (
@@ -440,6 +558,61 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
                   )}
                </GlassCard>
 
+               {/* Category Breakdown (CASH, TRANSFER, CARD) */}
+               <GlassCard className="bg-gradient-to-br from-violet-50/50 to-blue-50/50 border-violet-100">
+                  <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                     <span className="w-1.5 h-6 bg-violet-500 rounded-full"></span>
+                     Resumen por Categoría
+                  </h3>
+                  <div className="space-y-3">
+                     {/* CASH */}
+                     <div className="flex justify-between items-center p-3 rounded-xl bg-white/60 border border-green-200 shadow-sm">
+                        <div className="flex items-center gap-2">
+                           <div className="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center text-white">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="12" x="2" y="6" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></svg>
+                           </div>
+                           <span className="text-sm font-bold text-gray-700">Efectivo</span>
+                        </div>
+                        <span className="font-mono font-bold text-green-700 text-lg">${categoryBreakdown.CASH.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                     </div>
+
+                     {/* TRANSFER */}
+                     <div className="flex justify-between items-center p-3 rounded-xl bg-white/60 border border-blue-200 shadow-sm">
+                        <div className="flex items-center gap-2">
+                           <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center text-white">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18" /><path d="M5 21v-7" /><path d="M19 21v-7" /><path d="M10 9L3 21" /><path d="M14 9l7 12" /><path d="M2 6h20" /><path d="M12 2v4" /><path d="m2 6 10-4 10 4" /></svg>
+                           </div>
+                           <span className="text-sm font-bold text-gray-700">Transferencias</span>
+                        </div>
+                        <span className="font-mono font-bold text-blue-700 text-lg">${categoryBreakdown.TRANSFER.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                     </div>
+
+                     {/* CARD */}
+                     <div className="flex justify-between items-center p-3 rounded-xl bg-white/60 border border-purple-200 shadow-sm">
+                        <div className="flex items-center gap-2">
+                           <div className="w-8 h-8 rounded-lg bg-purple-500 flex items-center justify-center text-white">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></svg>
+                           </div>
+                           <span className="text-sm font-bold text-gray-700">Tarjetas</span>
+                        </div>
+                        <span className="font-mono font-bold text-purple-700 text-lg">${categoryBreakdown.CARD.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                     </div>
+
+                     {/* OTHER (if > 0) */}
+                     {categoryBreakdown.OTHER > 0 && (
+                        <div className="flex justify-between items-center p-3 rounded-xl bg-white/60 border border-gray-200 shadow-sm">
+                           <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-gray-500 flex items-center justify-center text-white">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+                              </div>
+                              <span className="text-sm font-bold text-gray-700">Otros</span>
+                           </div>
+                           <span className="font-mono font-bold text-gray-700 text-lg">${categoryBreakdown.OTHER.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                     )}
+                  </div>
+               </GlassCard>
+
                {/* Payment Methods */}
                <GlassCard>
                   <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -455,7 +628,7 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
                               <span className="text-gray-600 font-medium flex items-center gap-2">
                                  {method.toLowerCase().includes('efectivo') ? '💵' : '💳'} {method}
                               </span>
-                              <span className="font-bold text-gray-800">${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                              <span className="font-bold text-gray-800">${formatCurrency(amount as number)}</span>
                            </div>
                         ))}
                      </div>
@@ -477,15 +650,36 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
                      </div>
                   ) : (
                      <div className="max-h-48 overflow-y-auto space-y-2 pr-2 scrollbar-thin">
-                        {transfersDetail.map((t, idx) => (
-                           <div key={idx} className="flex justify-between items-center text-xs bg-white/80 p-3 rounded-lg border border-blue-100 shadow-sm">
-                              <div>
-                                 <span className="block font-bold text-blue-900">{t.method}</span>
-                                 <span className="text-blue-500 font-mono bg-blue-50 px-1 rounded">{t.ref}</span>
+                        {transfersDetail.map((t, idx) => {
+                           // Color coding by type
+                           const typeColors = {
+                              TRANSFER: 'bg-blue-100 text-blue-700 border-blue-200',
+                              CARD: 'bg-purple-100 text-purple-700 border-purple-200',
+                              OTHER: 'bg-gray-100 text-gray-700 border-gray-200',
+                              CASH: 'bg-green-100 text-green-700 border-green-200'
+                           };
+                           const typeLabels = {
+                              TRANSFER: 'Transferencia',
+                              CARD: 'Tarjeta',
+                              OTHER: 'Otro',
+                              CASH: 'Efectivo'
+                           };
+
+                           return (
+                              <div key={idx} className="flex justify-between items-center text-xs bg-white/80 p-3 rounded-lg border border-blue-100 shadow-sm">
+                                 <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                       <span className="block font-bold text-blue-900">{t.method}</span>
+                                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${typeColors[t.type]}`}>
+                                          {typeLabels[t.type]}
+                                       </span>
+                                    </div>
+                                    <span className="text-blue-500 font-mono bg-blue-50 px-1 rounded text-[10px]">{t.ref}</span>
+                                 </div>
+                                 <span className="font-bold text-blue-700 text-sm ml-2">+${t.amount.toFixed(2)}</span>
                               </div>
-                              <span className="font-bold text-blue-700 text-sm">+${t.amount.toFixed(2)}</span>
-                           </div>
-                        ))}
+                           );
+                        })}
                      </div>
                   )}
                </GlassCard>

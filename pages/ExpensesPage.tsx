@@ -1,15 +1,17 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { GlassCard } from '../components/GlassCard';
-import { expenseService } from '../services/supabaseService';
-import { User, Expense, ExpenseAccount, ExpensePaymentType, ExpensePayment } from '../types';
+import { expenseService, supplierService, expenseAccountService } from '../services/supabaseService';
+import { User, Expense, ExpenseAccount, ExpensePaymentType, ExpensePayment, ExpenseAccountModel, ExpenseSubAccountModel } from '../types';
+import { ExpenseAccountManager } from '../components/ExpenseAccountManager';
+import { getLocalDateString, toLocalDateString, getBusinessDateString, formatCurrency } from '../utils/dateUtils';
+
 
 interface ExpensesPageProps {
   user: User;
 }
 
-// Configuración de Cuentas y Subcuentas
-const ACCOUNT_OPTIONS: Record<ExpenseAccount, string> = {
+// Configuración de Cuentas y Subcuentas - LEGACY MAPPING (For Display Only)
+const LEGACY_ACCOUNT_NAMES: Record<string, string> = {
   SERVICIOS_BASICOS: 'Servicios Básicos',
   GASTOS_OPERATIVOS: 'Gastos Operativos',
   COMPRA_MERCADERIA: 'Compra Mercadería',
@@ -17,32 +19,36 @@ const ACCOUNT_OPTIONS: Record<ExpenseAccount, string> = {
   MANTENIMIENTO: 'Mantenimiento'
 };
 
-const SUB_ACCOUNT_OPTIONS: Record<ExpenseAccount, string[]> = {
-  SERVICIOS_BASICOS: ['Energía Eléctrica', 'Agua Potable', 'Internet y Telefonía', 'Extracción Basura'],
-  GASTOS_OPERATIVOS: ['Alquiler Local', 'Planilla', 'Papelería y Útiles', 'Limpieza', 'Transporte/Combustible'],
-  COMPRA_MERCADERIA: ['Proveedores Nacionales', 'Importación', 'Fletes de Compra', 'Aduanas'],
-  IMPUESTOS: ['IVA', 'ISR', 'IBI', 'Tasas Municipales'],
-  MANTENIMIENTO: ['Reparaciones Local', 'Mantenimiento Equipos', 'Pintura', 'Jardinería']
+const formatAccountName = (code: string) => {
+  if (LEGACY_ACCOUNT_NAMES[code]) return LEGACY_ACCOUNT_NAMES[code];
+  // Convert "THIS_FORMAT" to "This Format"
+  return code.replace(/_/g, ' ').replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
 };
 
-const INITIAL_FORM_STATE = {
-  date: new Date().toISOString().split('T')[0],
+// Function to get fresh initial state with current date
+// Uses dateUtils to ensure proper local timezone handling
+const getInitialFormState = () => ({
+  date: getLocalDateString(),
   supplier: '',
   account: '' as ExpenseAccount | '',
   sub_account: '',
   total: '',
   payment_type: 'CONTADO' as ExpensePaymentType,
   image_url: ''
-};
+});
 
 export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+  const [formData, setFormData] = useState(getInitialFormState());
 
-  // Tab State: ALL (Registro General) vs CREDIT (Cuentas por Pagar)
-  const [activeTab, setActiveTab] = useState<'ALL' | 'CREDIT'>('ALL');
+  // Auto-complete suppliers state
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [showSupplierResults, setShowSupplierResults] = useState(false);
+
+  // Tab State: ALL (Registro General) vs CREDIT (Cuentas por Pagar) vs SUPPLIER_BALANCE (Saldo por Proveedor)
+  const [activeTab, setActiveTab] = useState<'ALL' | 'CREDIT' | 'SUPPLIER_BALANCE'>('ALL');
 
   // CXP Management State
   const [isDebtModalOpen, setIsDebtModalOpen] = useState(false);
@@ -57,15 +63,86 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Custom Dropdown State
+  const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
+  const [isSubAccountDropdownOpen, setIsSubAccountDropdownOpen] = useState(false);
+  const [isAccountManagerOpen, setIsAccountManagerOpen] = useState(false);
+
+  // Dynamic Accounts State
+  const [accountOptions, setAccountOptions] = useState<ExpenseAccountModel[]>([]);
+  const [subAccountOptions, setSubAccountOptions] = useState<ExpenseSubAccountModel[]>([]);
+
+  // Edit State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    date: '',
+    supplier: '',
+    account: '' as ExpenseAccount | '',
+    sub_account: '',
+    total: '',
+    payment_type: 'CONTADO' as ExpensePaymentType,
+    image_url: ''
+  });
+
+  // Filters State
+  const [filterDate, setFilterDate] = useState('');
+  const [filterSupplier, setFilterSupplier] = useState('');
+
   useEffect(() => {
+    console.log("ExpensesPage mounted");
+    if (!expenseService || !supplierService) {
+      console.error("Services undefined!", { expenseService, supplierService });
+      alert("Error de sistema: Servicios no cargados correctamente. Por favor recargue la página.");
+      return;
+    }
     loadData();
+    loadSuppliers();
+    loadData();
+    loadSuppliers();
+    loadAccountOptions();
   }, []);
+
+  const loadAccountOptions = async () => {
+    try {
+      const [accs, subs] = await Promise.all([
+        expenseAccountService.getAllAccounts(),
+        expenseAccountService.getAllSubAccounts()
+      ]);
+      setAccountOptions(accs);
+      setSubAccountOptions(subs);
+    } catch (e) {
+      console.error("Error loading account options", e);
+    }
+  };
+
+  const activeSubAccounts = useMemo(() => {
+    // Determine active account ID based on selected account name (code)
+    const selectedAcc = accountOptions.find(a => a.name === formData.account);
+    if (!selectedAcc) return [];
+    return subAccountOptions.filter(s => s.account_id === selectedAcc.id);
+  }, [formData.account, accountOptions, subAccountOptions]);
+
+  const activeEditSubAccounts = useMemo(() => {
+    const selectedAcc = accountOptions.find(a => a.name === editFormData.account);
+    if (!selectedAcc) return [];
+    return subAccountOptions.filter(s => s.account_id === selectedAcc.id);
+  }, [editFormData.account, accountOptions, subAccountOptions]);
 
   const loadData = async () => {
     setLoading(true);
-    const data = await expenseService.getAll();
-    setExpenses(data);
+    try {
+      const data = await expenseService.getAll();
+      setExpenses(data);
+    } catch (e) { console.error("Error loading expenses", e); }
     setLoading(false);
+  };
+
+  const loadSuppliers = async () => {
+    try {
+      const data = await supplierService.getAll();
+      setSuppliers(data);
+    } catch (e) { console.error('Error loading suppliers', e); }
   };
 
   // --- FORM HANDLERS (Create Expense) ---
@@ -86,21 +163,111 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
     }
 
     setLoading(true);
-    await expenseService.create({
-      date: formData.date,
-      supplier: formData.supplier,
-      account: formData.account as ExpenseAccount,
-      sub_account: formData.sub_account,
-      total: parseFloat(formData.total),
-      payment_type: formData.payment_type,
-      image_url: formData.image_url,
-      user_id: user.id
-    });
+    try {
+      // Find supplier ID if exists
+      const matchedSupplier = suppliers.find(s => s.name === formData.supplier);
 
-    setFormData(INITIAL_FORM_STATE);
-    setShowModal(false);
-    await loadData();
-    setLoading(false);
+      const result = await expenseService.create({
+        date: formData.date,
+        supplier: formData.supplier,
+        supplier_id: matchedSupplier?.id,
+        account: formData.account,
+        sub_account: formData.sub_account,
+        total: parseFloat(formData.total),
+        payment_type: formData.payment_type,
+        image_url: formData.image_url,
+        user_id: user.id
+      });
+
+      if (result.success) {
+        setFormData(getInitialFormState());
+        setShowModal(false);
+        await loadData();
+        alert("Gasto registrado exitosamente");
+      } else {
+        alert("Error al registrar gasto.");
+      }
+    } catch (error) {
+      console.error("Crash avoided:", error);
+      alert("Ocurrió un error inesperado al guardar.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- EDIT & DELETE HANDLERS ---
+  const handleOpenEdit = (expense: Expense) => {
+    setEditingExpense(expense);
+    setEditFormData({
+      date: expense.date,
+      supplier: expense.supplier,
+      account: expense.account,
+      sub_account: expense.sub_account,
+      total: expense.total.toString(),
+      payment_type: expense.payment_type,
+      image_url: expense.image_url || ''
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense) return;
+
+    if (!editFormData.account || !editFormData.sub_account || !editFormData.supplier || !editFormData.total) {
+      alert("Por favor complete todos los campos obligatorios");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await expenseService.update(editingExpense.id, {
+        date: editFormData.date,
+        supplier: editFormData.supplier,
+        account: editFormData.account,
+        sub_account: editFormData.sub_account,
+        total: parseFloat(editFormData.total),
+        payment_type: editFormData.payment_type,
+        image_url: editFormData.image_url
+      });
+
+      if (result.success) {
+        setIsEditModalOpen(false);
+        setEditingExpense(null);
+        await loadData();
+        alert("Gasto actualizado exitosamente");
+      } else {
+        alert("Error al actualizar gasto.");
+      }
+    } catch (error) {
+      console.error("Error updating expense:", error);
+      alert("Ocurrió un error inesperado al actualizar.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (expense: Expense) => {
+    if (!confirm(`¿Está seguro de eliminar el gasto de ${expense.supplier} por $${expense.total.toFixed(2)}?`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await expenseService.delete(expense.id);
+
+      if (result.success) {
+        await loadData();
+        alert("Gasto eliminado exitosamente");
+      } else {
+        alert("Error al eliminar gasto.");
+      }
+    } catch (error) {
+      console.error("Error deleting expense:", error);
+      alert("Ocurrió un error inesperado al eliminar.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // --- CXP HANDLERS ---
@@ -168,7 +335,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
       setNewPaymentNote('');
       alert("Abono registrado.");
     } else {
-      alert("Error al registrar pago.");
+      alert(`Error al registrar pago: ${result.error || 'Error desconocido'}`);
     }
     setLoading(false);
   };
@@ -225,6 +392,11 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
     }
   };
 
+  // Filter suppliers for autocomplete
+  const filteredSuppliers = suppliers.filter(s =>
+    s.name.toLowerCase().includes(formData.supplier.toLowerCase())
+  );
+
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
 
@@ -239,19 +411,69 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
   const creditPending = expenses.filter(e => e.status !== 'PAID').reduce((sum, e) => sum + e.remaining_amount, 0);
 
   // Filter based on Tab
-  const displayedExpenses = activeTab === 'ALL'
-    ? expenses
-    : expenses.filter(e => e.status !== 'PAID');
+  // Filter Logic
+  let filteredList = activeTab === 'ALL' ? expenses : expenses.filter(e => e.status !== 'PAID');
+
+  if (filterDate) {
+    filteredList = filteredList.filter(e => getBusinessDateString(e.date) === filterDate);
+  }
+
+  if (filterSupplier) {
+    filteredList = filteredList.filter(e => e.supplier.toLowerCase().includes(filterSupplier.toLowerCase()));
+  }
+
+  const displayedExpenses = filteredList;
+
+  // Calculate Supplier Balances for the new tab
+  const supplierBalances = useMemo(() => {
+    const balances: Record<string, { totalDebt: number; count: number; lastDate: string }> = {};
+    expenses.forEach(exp => {
+      if (!balances[exp.supplier]) {
+        balances[exp.supplier] = { totalDebt: 0, count: 0, lastDate: exp.date };
+      }
+      // Update last interaction date
+      if (exp.date > balances[exp.supplier].lastDate) {
+        balances[exp.supplier].lastDate = exp.date;
+      }
+
+      // Sum debt
+      if (exp.status !== 'PAID') {
+        balances[exp.supplier].totalDebt += exp.remaining_amount;
+        balances[exp.supplier].count += 1;
+      }
+    });
+
+    return Object.entries(balances)
+      .map(([name, data]) => ({ name, ...data }))
+      .filter(item => item.totalDebt > 0) // Only show suppliers we owe money to
+      .sort((a, b) => b.totalDebt - a.totalDebt);
+  }, [expenses]);
+
+  const handleViewSupplierDetail = (supplierName: string) => {
+    setFilterSupplier(supplierName);
+    setActiveTab('ALL');
+  };
 
   return (
     <div className="space-y-6 animate-fade-in-up">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-800">Control de Egresos</h2>
-          <p className="text-gray-500">Gestión de gastos, compras y Cuentas por Pagar (CxP).</p>
+          <div className="flex items-center gap-2">
+            <p className="text-gray-500">Gestión de gastos, compras y Cuentas por Pagar (CxP).</p>
+            <button
+              onClick={() => setIsAccountManagerOpen(true)}
+              className="text-xs text-blue-500 hover:text-blue-700 font-bold bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 transition-colors"
+            >
+              ⚙ Configurar Cuentas
+            </button>
+          </div>
         </div>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setFormData(getInitialFormState()); // Reset form with fresh date
+            setShowModal(true);
+          }}
           className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-500/20 transition-all flex items-center gap-2"
         >
           <span className="text-xl leading-none">+</span> Registrar Gasto
@@ -330,78 +552,204 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
           {creditPending > 0 && <span className="ml-2 bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full text-[10px]">${creditPending.toFixed(0)}</span>}
           {activeTab === 'CREDIT' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-primary"></div>}
         </button>
+        <button
+          onClick={() => setActiveTab('SUPPLIER_BALANCE')}
+          className={`px-4 py-2 font-bold text-sm transition-colors relative ${activeTab === 'SUPPLIER_BALANCE' ? 'text-brand-primary' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Saldo por Proveedor
+          {activeTab === 'SUPPLIER_BALANCE' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-primary"></div>}
+        </button>
       </div>
+
+      {/* Filters Bar */}
+      <GlassCard className="p-4 flex flex-col md:flex-row gap-4 items-end">
+        <div className="flex-1 w-full md:w-auto">
+          <label className="block text-xs font-bold text-gray-500 mb-1">Filtrar por Fecha</label>
+          <input
+            type="date"
+            value={filterDate}
+            onChange={e => setFilterDate(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-brand-primary outline-none text-sm font-bold text-gray-700"
+          />
+        </div>
+        <div className="flex-1 w-full md:w-auto">
+          <label className="block text-xs font-bold text-gray-500 mb-1">Filtrar por Proveedor</label>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Buscar proveedor..."
+              value={filterSupplier}
+              onChange={e => setFilterSupplier(e.target.value)}
+              className="w-full pl-9 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-brand-primary outline-none text-sm"
+            />
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            </div>
+          </div>
+        </div>
+        {(filterDate || filterSupplier) && (
+          <button
+            onClick={() => { setFilterDate(''); setFilterSupplier(''); }}
+            className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition-colors text-sm flex items-center gap-2 h-[38px]"
+          >
+            Limpiar
+          </button>
+        )}
+      </GlassCard>
 
       {/* Expense Table */}
       <GlassCard className="p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200">
-              <tr>
-                <th className="py-3 px-4">Fecha</th>
-                <th className="py-3 px-4">Proveedor</th>
-                <th className="py-3 px-4">Cuenta / Detalle</th>
-                <th className="py-3 px-4 text-center">Estado</th>
-                <th className="py-3 px-4 text-right">Total Orig.</th>
-                <th className="py-3 px-4 text-right">Saldo Pend.</th>
-                <th className="py-3 px-4 text-right">Acción</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {displayedExpenses.length === 0 ? (
-                <tr><td colSpan={7} className="py-8 text-center text-gray-400">No hay registros para esta vista.</td></tr>
-              ) : (
-                displayedExpenses.map(exp => (
-                  <tr key={exp.id} className="hover:bg-white/40 transition-colors">
-                    <td className="py-3 px-4 text-gray-600">
-                      <span className="block font-bold">{new Date(exp.date).toLocaleDateString()}</span>
-                      <span className="text-[10px] text-gray-400">{exp.id}</span>
-                    </td>
-                    <td className="py-3 px-4 font-bold text-gray-800">{exp.supplier}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-gray-700 text-xs">{ACCOUNT_OPTIONS[exp.account]}</span>
-                        <span className="text-xs text-gray-500">{exp.sub_account}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      {exp.status === 'PAID' ? (
-                        <span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">PAGADO</span>
-                      ) : (
-                        <span className="px-2 py-1 rounded bg-orange-100 text-orange-700 text-xs font-bold">PENDIENTE</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-500 font-medium">
-                      ${exp.total.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 text-right font-black text-gray-800">
-                      ${exp.remaining_amount.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      {exp.status !== 'PAID' && (
+          {activeTab === 'SUPPLIER_BALANCE' ? (
+            /* SUPPLIER BALANCE TABLE */
+            <table className="w-full text-left text-sm">
+              <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200">
+                <tr>
+                  <th className="py-3 px-4">Proveedor</th>
+                  <th className="py-3 px-4 text-center">Facturas Pendientes</th>
+                  <th className="py-3 px-4 text-right">Último Movimiento</th>
+                  <th className="py-3 px-4 text-right">Saldo Total</th>
+                  <th className="py-3 px-4 text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {supplierBalances.length === 0 ? (
+                  <tr><td colSpan={5} className="py-8 text-center text-gray-400">No hay saldos pendientes con proveedores.</td></tr>
+                ) : (
+                  supplierBalances.map((item) => (
+                    <tr key={item.name} className="hover:bg-white/40 transition-colors">
+                      <td className="py-3 px-4 font-bold text-gray-800">{item.name}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-lg text-xs font-bold">{item.count}</span>
+                      </td>
+                      <td className="py-3 px-4 text-right text-gray-500 font-mono text-xs">
+                        {getBusinessDateString(item.lastDate)}
+                      </td>
+                      <td className="py-3 px-4 text-right font-black text-orange-600 text-lg">
+                        ${item.totalDebt.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3 px-4 text-right">
                         <button
-                          onClick={() => handleOpenDebtManager(exp)}
-                          className="bg-brand-primary text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-brand-secondary transition-colors shadow-md"
+                          onClick={() => handleViewSupplierDetail(item.name)}
+                          className="text-brand-primary hover:text-brand-secondary font-bold text-xs underline"
                         >
-                          Abonar
+                          Ver Detalle
                         </button>
-                      )}
-                      {exp.status === 'PAID' && exp.image_url && (
-                        <button
-                          onClick={() => window.open(exp.image_url)}
-                          className="text-blue-500 hover:text-blue-700 text-xs underline"
-                        >
-                          Ver Recibo
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          ) : (
+            /* STANDARD EXPENSE TABLE */
+            <table className="w-full text-left text-sm">
+              <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200">
+                <tr>
+                  <th className="py-3 px-4">Fecha</th>
+                  <th className="py-3 px-4">Proveedor</th>
+                  <th className="py-3 px-4">Cuenta / Detalle</th>
+                  <th className="py-3 px-4 text-center">Estado</th>
+                  <th className="py-3 px-4 text-right">Total Orig.</th>
+                  <th className="py-3 px-4 text-right">Saldo Pend.</th>
+                  <th className="py-3 px-4 text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {displayedExpenses.length === 0 ? (
+                  <tr><td colSpan={7} className="py-8 text-center text-gray-400">No hay registros para esta vista.</td></tr>
+                ) : (
+                  displayedExpenses.map(exp => (
+                    <tr key={exp.id} className="hover:bg-white/40 transition-colors">
+                      <td className="py-3 px-4 text-gray-600">
+                        <span className="block font-bold">{getBusinessDateString(exp.date)}</span>
+                        <span className="text-[10px] text-gray-400">{exp.id}</span>
+                      </td>
+                      <td className="py-3 px-4 font-bold text-gray-800">{exp.supplier}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-gray-700 text-xs">{formatAccountName(exp.account)}</span>
+                          <span className="text-xs text-gray-500">{exp.sub_account}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        {exp.status === 'PAID' ? (
+                          <span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">PAGADO</span>
+                        ) : (
+                          <span className="px-2 py-1 rounded bg-orange-100 text-orange-700 text-xs font-bold">PENDIENTE</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right text-gray-500 font-medium">
+                        ${exp.total.toFixed(2)}
+                      </td>
+                      <td className="py-3 px-4 text-right font-black text-gray-800">
+                        ${exp.remaining_amount.toFixed(2)}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex gap-2 justify-end">
+                          {/* Edit Button */}
+                          <button
+                            onClick={() => handleOpenEdit(exp)}
+                            className="bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-colors shadow-md flex items-center justify-center"
+                            title="Editar"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                          </button>
+
+                          {/* Delete Button */}
+                          <button
+                            onClick={() => handleDelete(exp)}
+                            className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition-colors shadow-md flex items-center justify-center"
+                            title="Eliminar"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
+
+                          {/* Abonar Button (only for unpaid) */}
+                          {exp.status !== 'PAID' && (
+                            <button
+                              onClick={() => handleOpenDebtManager(exp)}
+                              className="bg-brand-primary text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-brand-secondary transition-colors shadow-md"
+                            >
+                              Abonar
+                            </button>
+                          )}
+
+                          {/* Ver Recibo Button */}
+                          {exp.image_url && (
+                            <button
+                              onClick={() => window.open(exp.image_url)}
+                              className="text-blue-500 hover:text-blue-700 text-xs underline"
+                            >
+                              📄
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </GlassCard>
+
+      {/* ACCOUNT MANAGER MODAL */}
+      {isAccountManagerOpen && (
+        <ExpenseAccountManager
+          onClose={() => setIsAccountManagerOpen(false)}
+          onUpdate={loadAccountOptions}
+        />
+      )}
 
       {/* --- CXP DEBT MANAGER MODAL --- */}
       {isDebtModalOpen && selectedExpenseForDebt && (
@@ -527,7 +875,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
         </div>
       )}
 
-      {/* CREATE EXPENSE MODAL (Unchanged logic, kept for consistency) */}
+      {/* CREATE EXPENSE MODAL */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
           <GlassCard className="w-full max-w-2xl bg-white border-white shadow-2xl overflow-y-auto max-h-[90vh]">
@@ -549,48 +897,195 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
                     className="w-full px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-brand-primary outline-none"
                   />
                 </div>
-                {/* Proveedor */}
-                <div>
+                {/* Proveedor / Beneficiario CON AUTOCOMPLETADO */}
+                <div className="relative">
                   <label className="block text-xs font-bold text-gray-500 mb-1">Proveedor / Beneficiario</label>
                   <input
                     type="text"
                     required
-                    placeholder="Ej. Claro, Walmart, Juan Perez"
+                    placeholder="Buscar o Ingresar Nuevo..."
                     value={formData.supplier}
-                    onChange={e => setFormData({ ...formData, supplier: e.target.value })}
+                    onChange={e => {
+                      setFormData({ ...formData, supplier: e.target.value });
+                      setShowSupplierResults(true);
+                    }}
+                    onFocus={() => setShowSupplierResults(true)}
+                    // OnBlur optional handling can be tricky, relying on click outside or selection
                     className="w-full px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-brand-primary outline-none"
                   />
+                  {showSupplierResults && formData.supplier && (
+                    <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-40 overflow-y-auto z-10">
+                      {filteredSuppliers.map(s => (
+                        <div
+                          key={s.id}
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, supplier: s.name }));
+                            setShowSupplierResults(false);
+                          }}
+                          className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                        >
+                          {s.name}
+                        </div>
+                      ))}
+                      {filteredSuppliers.length === 0 && (
+                        <div className="px-4 py-2 text-gray-400 text-xs italic">Se registrará como nuevo texto: "{formData.supplier}"</div>
+                      )}
+                    </div>
+                  )}
+                  {/* Overlay to close dropdown if clicked outside (simple version) */}
+                  {showSupplierResults && (
+                    <div className="fixed inset-0 z-0" onClick={() => setShowSupplierResults(false)} style={{ display: 'none' }}></div>
+                  )}
                 </div>
-                {/* Cuenta Mayor */}
+
+                {/* Cuenta Mayor - Custom Dropdown */}
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1">Cuenta Principal</label>
-                  <select
-                    required
-                    value={formData.account}
-                    onChange={handleAccountChange}
-                    className="w-full px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-brand-primary outline-none"
-                  >
-                    <option value="">-- Seleccionar --</option>
-                    {Object.entries(ACCOUNT_OPTIONS).map(([key, label]) => (
-                      <option key={key} value={key}>{label}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">
+                    Cuenta Principal <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
+                      className={`w-full px-4 py-3 rounded-xl bg-white border-2 transition-all shadow-sm flex items-center justify-between group ${!formData.account ? 'border-red-300 hover:border-red-400' : 'border-gray-200 hover:border-brand-primary'
+                        } focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 outline-none font-medium text-left`}
+                    >
+                      <span className={formData.account ? 'text-gray-800' : 'text-gray-400'}>
+                        {formData.account ? formatAccountName(formData.account) : '-- Seleccionar Cuenta --'}
+                      </span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`text-brand-primary transition-transform duration-200 ${isAccountDropdownOpen ? 'rotate-180' : ''}`}
+                      >
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isAccountDropdownOpen && (
+                      <>
+                        {/* Backdrop */}
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setIsAccountDropdownOpen(false)}
+                        ></div>
+
+                        {/* Options */}
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
+                          <div className="max-h-60 overflow-y-auto">
+                            {accountOptions.map((acc) => (
+                              <button
+                                key={acc.id}
+                                type="button"
+                                onClick={() => {
+                                  setFormData({ ...formData, account: acc.name, sub_account: '' });
+                                  setIsAccountDropdownOpen(false);
+                                }}
+                                className={`w-full px-4 py-3 text-left hover:bg-brand-primary/5 transition-colors border-b border-gray-100 last:border-0 ${formData.account === acc.name ? 'bg-brand-primary/10 text-brand-primary font-bold' : 'text-gray-700'
+                                  }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{formatAccountName(acc.name)}</span>
+                                  {formData.account === acc.name && (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-brand-primary">
+                                      <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
-                {/* Subcuenta (Dependiente) */}
+
+                {/* Subcuenta - Custom Dropdown */}
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1">Subcuenta / Detalle</label>
-                  <select
-                    required
-                    disabled={!formData.account}
-                    value={formData.sub_account}
-                    onChange={e => setFormData({ ...formData, sub_account: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-brand-primary outline-none disabled:bg-gray-100 disabled:text-gray-400"
-                  >
-                    <option value="">-- Seleccionar --</option>
-                    {formData.account && SUB_ACCOUNT_OPTIONS[formData.account].map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">
+                    Subcuenta / Detalle <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      disabled={!formData.account}
+                      onClick={() => formData.account && setIsSubAccountDropdownOpen(!isSubAccountDropdownOpen)}
+                      className={`w-full px-4 py-3 rounded-xl bg-white border-2 outline-none font-medium text-left transition-all shadow-sm flex items-center justify-between ${formData.account
+                        ? (!formData.sub_account ? 'border-red-300 hover:border-red-400' : 'border-gray-200 hover:border-brand-primary') + ' focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 cursor-pointer'
+                        : 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
+                        }`}
+                    >
+                      <span className={formData.sub_account ? 'text-gray-800' : 'text-gray-400'}>
+                        {!formData.account
+                          ? '-- Primero seleccione una cuenta --'
+                          : formData.sub_account
+                            ? formData.sub_account
+                            : '-- Seleccionar Subcuenta --'}
+                      </span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`transition-transform duration-200 ${formData.account ? 'text-brand-primary' : 'text-gray-300'
+                          } ${isSubAccountDropdownOpen ? 'rotate-180' : ''}`}
+                      >
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isSubAccountDropdownOpen && formData.account && (
+                      <>
+                        {/* Backdrop */}
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setIsSubAccountDropdownOpen(false)}
+                        ></div>
+
+                        {/* Options */}
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
+                          <div className="max-h-60 overflow-y-auto">
+                            {activeSubAccounts.map((sub) => (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                onClick={() => {
+                                  setFormData({ ...formData, sub_account: sub.name });
+                                  setIsSubAccountDropdownOpen(false);
+                                }}
+                                className={`w-full px-4 py-3 text-left hover:bg-brand-primary/5 transition-colors border-b border-gray-100 last:border-0 ${formData.sub_account === sub.name ? 'bg-brand-primary/10 text-brand-primary font-bold' : 'text-gray-700'
+                                  }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{sub.name}</span>
+                                  {formData.sub_account === sub.name && (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-brand-primary">
+                                      <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
                 {/* Total */}
                 <div>
@@ -675,6 +1170,131 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
               >
                 {loading ? 'Guardando...' : 'Registrar Gasto'}
               </button>
+            </form>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* EDIT EXPENSE MODAL */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+          <GlassCard className="w-full max-w-2xl bg-white border-white shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-blue-800">Editar Gasto / Egreso</h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+
+            <form onSubmit={handleUpdate} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Fecha */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Fecha de Emisión</label>
+                  <input
+                    type="date"
+                    required
+                    value={editFormData.date}
+                    onChange={e => setEditFormData({ ...editFormData, date: e.target.value })}
+                    className="w-full px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                {/* Proveedor / Beneficiario */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Proveedor / Beneficiario</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.supplier}
+                    onChange={e => setEditFormData({ ...editFormData, supplier: e.target.value })}
+                    className="w-full px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                {/* Cuenta Mayor */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Cuenta Principal</label>
+                  <select
+                    className="w-full px-4 py-2 rounded-lg bg-white border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={editFormData.account}
+                    onChange={e => setEditFormData({ ...editFormData, account: e.target.value as ExpenseAccount, sub_account: '' })}
+                  >
+                    <option value="">-- Seleccionar --</option>
+                    {accountOptions.map((acc) => (
+                      <option key={acc.id} value={acc.name}>{formatAccountName(acc.name)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Subcuenta */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Subcuenta / Detalle</label>
+                  <select
+                    className="w-full px-4 py-2 rounded-lg bg-white border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={editFormData.sub_account}
+                    disabled={!editFormData.account}
+                    onChange={e => setEditFormData({ ...editFormData, sub_account: e.target.value })}
+                  >
+                    <option value="">-- Seleccionar --</option>
+                    {activeEditSubAccounts.map(sub => (
+                      <option key={sub.id} value={sub.name}>{sub.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Total */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Monto Total</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      value={editFormData.total}
+                      onChange={e => setEditFormData({ ...editFormData, total: e.target.value })}
+                      className="w-full pl-8 pr-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Tipo Pago */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Condición de Pago</label>
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditFormData({ ...editFormData, payment_type: 'CONTADO' })}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${editFormData.payment_type === 'CONTADO' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      CONTADO
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditFormData({ ...editFormData, payment_type: 'CREDITO' })}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${editFormData.payment_type === 'CREDITO' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      CRÉDITO
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-6 py-2 rounded-xl text-gray-500 hover:bg-gray-100 font-bold transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-xl transition-all shadow-lg shadow-blue-500/20"
+                >
+                  {loading ? 'Guardando...' : 'Actualizar Gasto'}
+                </button>
+              </div>
             </form>
           </GlassCard>
         </div>

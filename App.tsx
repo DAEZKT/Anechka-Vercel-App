@@ -9,6 +9,7 @@ import { CustomersPage } from './pages/CustomersPage';
 import { UsersPage } from './pages/UsersPage';
 import { SalesPage } from './pages/SalesPage'; // Import Sales Page
 import { ExpensesPage } from './pages/ExpensesPage'; // Import Expenses Page
+import { SuppliersPage } from './pages/SuppliersPage'; // Import Suppliers Page
 import { CashClosePage } from './pages/CashClosePage'; // Import CashClose Page
 import { Layout } from './components/Layout';
 import { User, UserRole } from './types';
@@ -48,6 +49,9 @@ export default function App() {
     if (currentPage === 'sales') return <SalesPage />;
     if (currentPage === 'customers') return <CustomersPage />;
     if (currentPage === 'expenses') return <ExpensesPage user={user} />;
+    if (currentPage === 'suppliers') return <SuppliersPage />;
+
+    // Inventory Sub-routes
 
     // Inventory Sub-routes
     if (currentPage === 'inventory-stock') return <InventoryPage user={user} initialView="STOCK" />;

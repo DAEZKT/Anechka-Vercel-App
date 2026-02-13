@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { GlassCard } from '../components/GlassCard';
 import { salesService, productService, customerService } from '../services/supabaseService';
@@ -14,6 +13,22 @@ const Icons = {
    X: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>,
    Printer: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect width="12" height="8" x="6" y="14" /></svg>,
    WhatsApp: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
+};
+
+// --- HELPERS ---
+const cleanMethodName = (raw: string) => {
+   if (!raw) return '';
+   const parts = raw.split('|');
+   return parts.length > 1 ? parts[1].trim() : parts[0].trim();
+};
+
+const cleanSnapshot = (snapshot: string) => {
+   if (!snapshot) return '';
+   return snapshot.split(', ').map(part => {
+      const [namePart, amountPart] = part.split(': ');
+      if (!namePart) return part;
+      return `${cleanMethodName(namePart)}: ${amountPart || ''}`;
+   }).join(', ');
 };
 
 export const SalesPage = () => {
@@ -56,14 +71,27 @@ export const SalesPage = () => {
 
       // 1. Filter by Date Range
       if (dateRange.start) {
-         const start = new Date(dateRange.start);
-         start.setHours(0, 0, 0, 0);
-         result = result.filter(s => new Date(s.created_at) >= start);
+         // Using local date string comparison to prevent TZ issues
+         const start = dateRange.start;
+         result = result.filter(s => {
+            const d = new Date(s.created_at);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            return dateStr >= start;
+         });
       }
       if (dateRange.end) {
-         const end = new Date(dateRange.end);
-         end.setHours(23, 59, 59, 999);
-         result = result.filter(s => new Date(s.created_at) <= end);
+         const end = dateRange.end;
+         result = result.filter(s => {
+            const d = new Date(s.created_at);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            return dateStr <= end;
+         });
       }
 
       // 2. Filter by Customer Name
@@ -72,10 +100,18 @@ export const SalesPage = () => {
          result = result.filter(s => (s.customer_name || '').toLowerCase().includes(term));
       }
 
-      // 3. Filter by Payment Method
+      // 3. Filter by Payment Method (CLEAN OR RAW)
+      // Logic: If user selects "Tarjeta", we check if the clean string contains it or the raw contains it.
+      // Since cleaner removes prefix, checking clean is safer for user expectation, 
+      // but checking raw is safer for data integrity. 
+      // Given user selects from 'availableMethods' which ARE clean, we should visually match.
       if (searchMethod) {
          const term = searchMethod.toLowerCase();
-         result = result.filter(s => s.payment_method_snapshot.toLowerCase().includes(term));
+         result = result.filter(s => {
+            const raw = s.payment_method_snapshot || '';
+            const clean = cleanSnapshot(raw);
+            return clean.toLowerCase().includes(term);
+         });
       }
 
       // 4. SORTING: Descending by Timestamp (Newest first)
@@ -87,15 +123,19 @@ export const SalesPage = () => {
 
    const loadData = async () => {
       setLoading(true);
-      const [salesData, productsData, customersData] = await Promise.all([
-         salesService.getSalesHistory(),
-         productService.getAll(),
-         customerService.getAll()
-      ]);
+      try {
+         const [salesData, productsData, customersData] = await Promise.all([
+            salesService.getSalesHistory(),
+            productService.getAll(),
+            customerService.getAll()
+         ]);
 
-      setAllSales(salesData);
-      setProducts(productsData);
-      setCustomers(customersData);
+         setAllSales(salesData);
+         setProducts(productsData);
+         setCustomers(customersData);
+      } catch (e) {
+         console.error("Error loading sales data", e);
+      }
       setLoading(false);
    };
 
@@ -105,24 +145,36 @@ export const SalesPage = () => {
       let customerStats: Record<string, { count: number, total: number }> = {};
 
       data.forEach(sale => {
-         total += sale.total_amount;
+         total += sale.total_amount || 0;
 
-         const snapshot = sale.payment_method_snapshot || '';
-         const parts = snapshot.split(', ');
+         const snapshot = sale.payment_method_snapshot || 'Desconocido';
+         if (snapshot) {
+            const parts = snapshot.split(', ');
 
-         parts.forEach(part => {
-            const [method, amountStr] = part.split(': ');
-            if (method && amountStr) {
-               const cleanMethod = method.trim();
-               const amount = parseFloat(amountStr.replace('$', ''));
-               methodStats[cleanMethod] = (methodStats[cleanMethod] || 0) + amount;
-            }
-         });
+            parts.forEach(part => {
+               const [rawMethodName, amountStr] = part.split(': ');
+               if (rawMethodName) {
+                  const cleanMethod = cleanMethodName(rawMethodName.trim());
+
+                  let amount = 0;
+                  if (amountStr) {
+                     amount = parseFloat(amountStr.replace('$', '').replace(/,/g, '') || '0');
+                  } else {
+                     // Fallback if just method name
+                     amount = sale.total_amount;
+                  }
+
+                  if (!isNaN(amount)) {
+                     methodStats[cleanMethod] = (methodStats[cleanMethod] || 0) + amount;
+                  }
+               }
+            });
+         }
 
          const custName = sale.customer_name || 'Desconocido';
          if (!customerStats[custName]) customerStats[custName] = { count: 0, total: 0 };
          customerStats[custName].count += 1;
-         customerStats[custName].total += sale.total_amount;
+         customerStats[custName].total += sale.total_amount || 0;
       });
 
       const sortedCustomers = Object.entries(customerStats)
@@ -208,8 +260,8 @@ export const SalesPage = () => {
 
       const methodData = Object.entries(stats.byMethod).map(([method, total]) => [
          method,
-         `$${total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
-         `${((total / stats.totalSales) * 100).toFixed(1)}%`
+         `$${(total as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+         `${stats.totalSales > 0 ? (((total as number) / stats.totalSales) * 100).toFixed(1) : '0.0'}%`
       ]);
 
       autoTable(doc, {
@@ -239,7 +291,7 @@ export const SalesPage = () => {
          sale.id,
          new Date(sale.created_at).toLocaleDateString() + ' ' + new Date(sale.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
          sale.customer_name || 'Consumidor Final',
-         sale.payment_method_snapshot,
+         cleanSnapshot(sale.payment_method_snapshot || 'N/A'), // USE HELPER HERE
          `$${sale.total_amount.toFixed(2)}`,
          sale.status
       ]);
@@ -276,11 +328,6 @@ export const SalesPage = () => {
    const handleUpdateCustomer = async () => {
       if (!selectedSale) return;
       const cust = customers.find(c => c.id === editCustomerId);
-
-      // If no customer selected (maybe clearing it?), or just keeping name if not found? 
-      // The requirement is to change customer. 
-      // If cust found, user ID + Name. If not, maybe just ID? 
-      // Let's assume user picks from dropdown corresponding to `customers`.
 
       if (cust) {
          const success = await salesService.updateCustomer(selectedSale.id, cust.id, cust.full_name);
@@ -333,11 +380,17 @@ export const SalesPage = () => {
    const availableMethods = useMemo(() => {
       const methods = new Set<string>();
       allSales.forEach(s => {
-         const parts = s.payment_method_snapshot.split(', ');
-         parts.forEach(p => {
-            const name = p.split(':')[0]?.trim();
-            if (name) methods.add(name);
-         });
+         // CLEAN FOR FILTER LIST
+         const snapshot = s.payment_method_snapshot || '';
+         if (snapshot) {
+            // Apply cleaning to parts
+            const parts = snapshot.split(', ');
+            parts.forEach(p => {
+               const rawName = p.split(':')[0]?.trim();
+               const cleanName = cleanMethodName(rawName);
+               if (cleanName) methods.add(cleanName);
+            });
+         }
       });
       return Array.from(methods).sort();
    }, [allSales]);
@@ -456,10 +509,10 @@ export const SalesPage = () => {
                            <div className="h-2 bg-gray-200 rounded-full w-16 overflow-hidden">
                               <div
                                  className="h-full bg-brand-accent"
-                                 style={{ width: `${stats.totalSales > 0 ? (amount / stats.totalSales) * 100 : 0}%` }}
+                                 style={{ width: `${stats.totalSales > 0 ? ((amount as number) / stats.totalSales) * 100 : 0}%` }}
                               />
                            </div>
-                           <span className="font-bold text-gray-900 w-16 text-right">${amount.toFixed(0)}</span>
+                           <span className="font-bold text-gray-900 w-16 text-right">${(amount as number).toFixed(0)}</span>
                         </div>
                      </div>
                   ))}
@@ -499,20 +552,19 @@ export const SalesPage = () => {
                   <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200">
                      <tr>
                         <th className="py-3 px-4 w-28">Ticket ID</th>
-                        {/* Increased Date Column */}
                         <th className="py-3 px-4 w-32">Fecha</th>
-                        {/* Increased Customer Column Width */}
                         <th className="py-3 px-4 min-w-[200px]">Cliente</th>
-                        {/* Increased Payment Column Width */}
                         <th className="py-3 px-4 min-w-[250px]">Métodos de Pago</th>
-                        <th className="py-3 px-4 text-right">Total</th>
+                        <th className="py-3 px-4 text-right">Subtotal</th>
+                        <th className="py-3 px-4 text-right">Descuento</th>
+                        <th className="py-3 px-4 text-right font-bold">Total</th>
                         <th className="py-3 px-4 text-center">Estado</th>
                         <th className="py-3 px-4 text-right">Acción</th>
                      </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                      {filteredSales.length === 0 ? (
-                        <tr><td colSpan={7} className="py-12 text-center text-gray-400">No se encontraron ventas con los filtros actuales.</td></tr>
+                        <tr><td colSpan={9} className="py-12 text-center text-gray-400">No se encontraron ventas con los filtros actuales.</td></tr>
                      ) : (
                         filteredSales.map(sale => (
                            <tr key={sale.id} className="hover:bg-white/40 transition-colors group">
@@ -530,8 +582,12 @@ export const SalesPage = () => {
                               <td className="py-3 px-4 font-medium text-gray-800 break-words whitespace-normal">{sale.customer_name}</td>
                               <td className="py-3 px-4">
                                  <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs border border-gray-200 inline-block whitespace-normal">
-                                    {sale.payment_method_snapshot}
+                                    {cleanSnapshot(sale.payment_method_snapshot)}
                                  </span>
+                              </td>
+                              <td className="py-3 px-4 text-right text-gray-500">${(sale.subtotal || sale.total_amount).toFixed(2)}</td>
+                              <td className="py-3 px-4 text-right text-red-400 font-medium">
+                                 {(sale.discount || 0) > 0 ? `-$${(sale.discount || 0).toFixed(2)}` : '-'}
                               </td>
                               <td className="py-3 px-4 text-right font-black text-gray-800">${sale.total_amount.toFixed(2)}</td>
                               <td className="py-3 px-4 text-center">
@@ -628,7 +684,7 @@ export const SalesPage = () => {
                      </div>
                      <div className="flex justify-between items-center text-sm mb-4">
                         <span className="text-gray-500">Pagos</span>
-                        <span className="font-medium text-gray-800 text-right">{selectedSale.payment_method_snapshot}</span>
+                        <span className="font-medium text-gray-800 text-right">{cleanSnapshot(selectedSale.payment_method_snapshot)}</span>
                      </div>
                      <div className="flex justify-between items-center text-xl font-black text-brand-primary pt-2 border-t border-gray-200 mb-4">
                         <span>Total Pagado</span>

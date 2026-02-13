@@ -13,9 +13,10 @@ export const AdminPage = () => {
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // New Method Form
+  // Form State
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<PaymentMethodType>('CARD');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -23,35 +24,83 @@ export const AdminPage = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const data = await paymentMethodService.getAll();
-    setMethods(data);
+    try {
+      const data = await paymentMethodService.getAll();
+      setMethods(data);
+    } catch (error) {
+      console.error('Error loading payment methods:', error);
+      alert('Error al cargar métodos de pago.');
+    }
     setLoading(false);
   };
 
   const handleToggle = async (id: string) => {
-    await paymentMethodService.toggleActive(id);
-    loadData();
-  };
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm('¿Eliminar este método de pago?')) {
-      await paymentMethodService.delete(id);
+    const result = await paymentMethodService.toggleActive(id);
+    if (result.success) {
       loadData();
+    } else {
+      alert('Error al cambiar el estado.');
     }
   };
 
-  const handleAdd = async (e: React.FormEvent) => {
+  const handleDelete = async (id: string) => {
+    if (window.confirm('¿Eliminar este método de pago? Esta acción no se puede deshacer.')) {
+      const result = await paymentMethodService.delete(id);
+      if (result.success) {
+        loadData();
+      } else {
+        alert('Error al eliminar. Verifique que no esté en uso.');
+      }
+    }
+  };
+
+  const handleEdit = (method: PaymentMethod) => {
+    setEditingId(method.id);
+    setNewName(method.name);
+    setNewType(method.type);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setNewName('');
+    setNewType('CARD');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName) return;
 
-    await paymentMethodService.create({
-      name: newName,
-      type: newType,
-      is_active: true
-    });
+    setLoading(true);
+    if (editingId) {
+      // UPDATE
+      const result = await paymentMethodService.update(editingId, {
+        name: newName,
+        type: newType
+      });
+      if (result.success) {
+        alert('Método actualizado correctamente.');
+        handleCancelEdit();
+        loadData();
+      } else {
+        alert('Error al actualizar método.');
+      }
+    } else {
+      // CREATE
+      const result = await paymentMethodService.create({
+        name: newName,
+        type: newType,
+        is_active: true
+      });
 
-    setNewName('');
-    loadData();
+      if (result.success) {
+        setNewName('');
+        setNewType('CARD');
+        loadData();
+      } else {
+        alert('Error al crear el método de pago.');
+      }
+    }
+    setLoading(false);
   };
 
   return (
@@ -65,8 +114,20 @@ export const AdminPage = () => {
         {/* Formulario */}
         <div className="md:col-span-1">
           <GlassCard className="sticky top-4">
-            <h3 className="text-lg font-bold text-brand-primary mb-4">Agregar Método</h3>
-            <form onSubmit={handleAdd} className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-brand-primary">
+                {editingId ? 'Editar Método' : 'Agregar Método'}
+              </h3>
+              {editingId && (
+                <button
+                  onClick={handleCancelEdit}
+                  className="text-gray-400 hover:text-gray-600 text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">Nombre Descriptivo</label>
                 <input
@@ -86,9 +147,10 @@ export const AdminPage = () => {
                     onChange={e => setNewType(e.target.value as PaymentMethodType)}
                     className="w-full px-4 py-2 pr-10 rounded-lg bg-white/60 border border-white/40 focus:ring-2 focus:ring-brand-primary outline-none text-sm appearance-none"
                   >
+                    <option value="CASH">Efectivo</option>
                     <option value="CARD">Tarjeta (POS)</option>
                     <option value="TRANSFER">Transferencia Bancaria</option>
-                    <option value="CASH">Efectivo</option>
+                    <option value="OTHER">Otro</option>
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
                     <ChevronDown />
@@ -97,9 +159,10 @@ export const AdminPage = () => {
               </div>
               <button
                 type="submit"
-                className="w-full bg-brand-primary hover:bg-brand-secondary text-white font-bold py-2 rounded-lg transition-colors shadow-lg shadow-brand-primary/20"
+                disabled={loading}
+                className="w-full bg-brand-primary hover:bg-brand-secondary text-white font-bold py-2 rounded-lg transition-colors shadow-lg shadow-brand-primary/20 disabled:opacity-50"
               >
-                + Guardar Configuración
+                {loading ? 'Procesando...' : editingId ? 'Guardar Cambios' : '+ Guardar Configuración'}
               </button>
             </form>
           </GlassCard>
@@ -134,13 +197,22 @@ export const AdminPage = () => {
                         </button>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => handleDelete(method.id)}
-                          className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded"
-                          title="Eliminar"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleEdit(method)}
+                            className="text-blue-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded"
+                            title="Editar"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(method.id)}
+                            className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded"
+                            title="Eliminar"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

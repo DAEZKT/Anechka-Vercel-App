@@ -85,6 +85,9 @@ export interface SaleHeader {
   customer_name: string | null; // Snapshot (Redundancy for invoices)
 
   total_amount: number;
+  subtotal?: number;
+  discount?: number;
+  tax?: number;
   status: 'PENDING' | 'COMPLETED' | 'CANCELLED';
   payment_method_id: string; // FK PaymentMethod
   payment_method_snapshot: string; // Historical name (e.g., if "POS BAC" is renamed later)
@@ -129,15 +132,45 @@ export interface InventoryMovementDetail {
 }
 
 // --- EXPENSES MODULE ENTITIES ---
+// Expense Account Management
+export interface ExpenseAccountModel {
+  id: string;
+  name: string;
+  description?: string;
+  created_at?: string;
+}
+
+export interface ExpenseSubAccountModel {
+  id: string;
+  account_id: string;
+  name: string;
+  created_at?: string;
+}
+
 export type ExpensePaymentType = 'CONTADO' | 'CREDITO';
-export type ExpenseAccount = 'SERVICIOS_BASICOS' | 'GASTOS_OPERATIVOS' | 'COMPRA_MERCADERIA' | 'IMPUESTOS' | 'MANTENIMIENTO';
+// Relaxed to string to allow dynamic accounts from DB
+export type ExpenseAccount = string;
 export type ExpenseStatus = 'PAID' | 'PENDING' | 'PARTIAL';
+
+// Supplier Entity (Proveedores)
+export interface Supplier {
+  id: string;
+  name: string;
+  contact_name?: string;
+  phone?: string;
+  email?: string;
+  tax_id?: string;
+  address?: string;
+  notes?: string;
+  created_at: string;
+}
 
 // Expense Header (La Factura/Documento)
 export interface Expense {
   id: string;
   date: string; // Fecha de emisión
-  supplier: string; // Proveedor
+  supplier_id?: string; // FK Optional
+  supplier: string; // Proveedor Snapshot
   account: ExpenseAccount;
   sub_account: string;
   total: number;

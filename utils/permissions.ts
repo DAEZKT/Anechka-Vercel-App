@@ -13,6 +13,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
 
 export const hasPermission = (role: UserRole, page: string): boolean => {
     const allowedPages = ROLE_PERMISSIONS[role];
+    if (!allowedPages) {
+        console.warn(`Role ${role} not found in permissions`);
+        return false;
+    }
     if (allowedPages.includes('*')) return true;
 
     // Handle sub-routes (e.g., 'inventory-stock' matched by 'inventory')

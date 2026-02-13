@@ -11,7 +11,7 @@ import { jsPDF } from "jspdf";
 const PaymentIcons = {
   Cash: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="12" x="2" y="6" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></svg>,
   Card: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></svg>,
-  Transfer: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18" /><path d="M5 21v-7" /><path d="M19 21v-7" /><path d="M10 9L3 21" /><path d="M14 9l7 12" /><path d="M2 6h20" /><path d="M12 2v4" /><path d="m2 6 10-4 10 4" /></svg>,
+  Transfer: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" x2="21" y1="22" y2="22" /><line x1="6" x2="6" y1="18" y2="11" /><line x1="10" x2="10" y1="18" y2="11" /><line x1="14" x2="14" y1="18" y2="11" /><line x1="18" x2="18" y1="18" y2="11" /><polygon points="12 2 20 7 4 7" /></svg>,
   Other: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2" /><path d="M12 18h.01" /></svg>,
   Back: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>,
   ChevronRight: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>,
@@ -78,11 +78,11 @@ export const POS: React.FC<POSProps> = ({ user }) => {
       const [prods, cats, methods] = await Promise.all([
         productService.getAll(),
         categoryService.getAll(),
-        paymentMethodService.getAll()
+        paymentMethodService.getAll(true)
       ]);
       setProducts(prods);
       setCategories(cats);
-      setPaymentMethods(methods.filter(m => m.is_active));
+      setPaymentMethods(methods);
 
       // Extract unique brands for filter
       const brands = Array.from(new Set(prods.map(p => p.brand))).sort();
@@ -352,11 +352,15 @@ export const POS: React.FC<POSProps> = ({ user }) => {
     };
 
     const result = await customerService.create(payload);
-    if (result.success && result.data) {
+    if (result.success && result.id) {
       await loadCustomers();
-      handleSelectCustomer(result.data);
+      // Find the created customer in the updated list or construct it
+      const newCust = { ...payload, id: result.id };
+      setSelectedCustomer(newCust);
       setIsNewCustomerModalOpen(false);
       setNewCustomerForm({ name: '', nit: '', phone: '', email: '', address: '' });
+    } else {
+      alert("Error al crear cliente");
     }
   };
 
@@ -436,8 +440,8 @@ export const POS: React.FC<POSProps> = ({ user }) => {
       );
 
       if (result.success) {
-        if (window.confirm(`Cobro registrado correctamente. Ticket: ${result.orderId}\n¿Desea imprimir el ticket?`)) {
-          generateTicket(result.orderId!, finalCustomerName, cart, paymentEntries);
+        if (window.confirm(`Cobro registrado correctamente. Ticket: ${result.saleId || result.saleNumber}\n¿Desea imprimir el ticket?`)) {
+          generateTicket(result.saleId || result.saleNumber || '', finalCustomerName, cart, paymentEntries);
         }
 
         // Reset everything
@@ -1043,6 +1047,7 @@ export const POS: React.FC<POSProps> = ({ user }) => {
                   value={newCustomerForm.email}
                   onChange={e => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-brand-primary outline-none text-sm"
+                  placeholder="Opcional"
                 />
               </div>
 

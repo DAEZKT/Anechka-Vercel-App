@@ -12,7 +12,11 @@ import {
   Expense, // Keeping Expense as it's used in the service, not ExpenseHeader
   AuditSession,
   MovementType,
-  CartItem // Added CartItem
+  CartItem,
+  ExpensePayment,
+  Supplier,
+  ExpenseAccountModel,
+  ExpenseSubAccountModel
 } from '../types';
 
 // ==================== CATEGORY SERVICE ====================
@@ -41,15 +45,70 @@ export const categoryService = {
 
 // ==================== PAYMENT METHOD SERVICE ====================
 export const paymentMethodService = {
-  getAll: async (): Promise<PaymentMethod[]> => {
-    const { data, error } = await supabase
+  getAll: async (onlyActive: boolean = false): Promise<PaymentMethod[]> => {
+    let query = supabase
       .from('payment_methods')
       .select('*')
-      .eq('is_active', true)
       .order('name');
 
+    if (onlyActive) {
+      query = query.eq('is_active', true);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
+  },
+
+  create: async (method: Omit<PaymentMethod, 'id'>): Promise<{ success: boolean; id?: string }> => {
+    const { data, error } = await supabase
+      .from('payment_methods')
+      .insert({
+        name: method.name,
+        type: method.type,
+        is_active: method.is_active ?? true
+      })
+      .select()
+      .single();
+
+    if (error) return { success: false };
+    return { success: true, id: data.id };
+  },
+
+  delete: async (id: string): Promise<{ success: boolean }> => {
+    const { error } = await supabase
+      .from('payment_methods')
+      .delete()
+      .eq('id', id);
+
+    return { success: !error };
+  },
+
+  toggleActive: async (id: string): Promise<{ success: boolean }> => {
+    // First get current state
+    const { data, error: getError } = await supabase
+      .from('payment_methods')
+      .select('is_active')
+      .eq('id', id)
+      .single();
+
+    if (getError || !data) return { success: false };
+
+    const { error: updateError } = await supabase
+      .from('payment_methods')
+      .update({ is_active: !data.is_active })
+      .eq('id', id);
+
+    return { success: !updateError };
+  },
+
+  update: async (id: string, updates: Partial<PaymentMethod>): Promise<{ success: boolean }> => {
+    const { error } = await supabase
+      .from('payment_methods')
+      .update(updates)
+      .eq('id', id);
+
+    return { success: !error };
   }
 };
 
@@ -207,6 +266,10 @@ export const customerService = {
 // ==================== SALES SERVICE ====================
 export const salesService = {
   getAll: async (): Promise<SaleHeader[]> => {
+    return salesService.getSalesHistory();
+  },
+
+  getSalesHistory: async (): Promise<SaleHeader[]> => {
     const { data, error } = await supabase
       .from('sales')
       .select(`
@@ -215,15 +278,22 @@ export const salesService = {
                 customers (name),
                 payment_methods (name)
             `)
-      .order('sale_date', { ascending: false });
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
 
     return (data || []).map(s => ({
       ...s,
+      total_amount: Number(s.total || 0),
+      subtotal: Number(s.subtotal || 0),
+      discount: Number(s.discount || 0),
+      tax: Number(s.tax || 0),
+      status: 'COMPLETED',
       user_name: s.users?.full_name || 'Desconocido',
       customer_name: s.customers?.name || 'Consumidor Final',
-      payment_method_name: s.payment_methods?.name || 'N/A'
+      payment_method_name: s.payment_methods?.name || 'N/A',
+      // If snapshot is missing but we have payment_method_name and total, construct it for backward compatibility
+      payment_method_snapshot: s.payment_method_snapshot || `${s.payment_methods?.name || 'Desconocido'}: $${s.total || 0}`
     }));
   },
 
@@ -246,6 +316,55 @@ export const salesService = {
     return { header, details: details || [] };
   },
 
+  getSaleDetails: async (saleId: string): Promise<SaleDetail[]> => {
+    const { data, error } = await supabase
+      .from('sale_items')
+      .select('*')
+      .eq('sale_id', saleId);
+
+    if (error) return [];
+    return data || [];
+  },
+
+  getAllDetails: async (): Promise<SaleDetail[]> => {
+    const { data, error } = await supabase
+      .from('sale_items')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching all sale details:', error);
+      return [];
+    }
+    return data || [];
+  },
+
+  updateCustomer: async (saleId: string, customerId: string, customerName: string): Promise<boolean> => {
+    // Check if customer exists first or if it's just a name update? 
+    // The UI passes ID and Name. We update the FK.
+    const { error } = await supabase
+      .from('sales')
+      .update({ customer_id: customerId })
+      .eq('id', saleId);
+
+    return !error;
+  },
+
+  deleteSale: async (saleId: string): Promise<boolean> => {
+    // The trigger on sale_items should handle stock reversion.
+    // But we need to delete items first? No, cascade delete usually handles it, 
+    // but to trigger the stock reversion on each item, we might need to delete items one by one or ensure the trigger fires on bulk delete.
+    // Postgres triggers fire per row on DELETE FROM table, so verifying cascade setup.
+    // Assuming cascade delete is set up on foreign keys. If not, we delete items manually.
+
+    // To be safe and ensure stock triggers run:
+    const { error: itemsError } = await supabase.from('sale_items').delete().eq('sale_id', saleId);
+    if (itemsError) return false;
+
+    const { error } = await supabase.from('sales').delete().eq('id', saleId);
+    return !error;
+  },
+
   createSale: async (
     userId: string,
     customerName: string, // Changed from customerId to match POS.tsx expectations or handle both
@@ -262,6 +381,13 @@ export const salesService = {
       // Generate sale number
       const saleNumber = `SALE-${Date.now()}`;
 
+      // Generate snapshot string with TYPE for proper categorization
+      // Format: "TYPE|Method Name: $Amount, TYPE|Method Name: $Amount"
+      // Example: "CASH|Efectivo Caja 1: $100.00, TRANSFER|Bac David: $50.00"
+      const paymentSnapshot = paymentEntries
+        .map(p => `${p.type}|${p.methodName}: $${p.amount.toFixed(2)}`)
+        .join(', ');
+
       // Create sale header
       const { data: sale, error: saleError } = await supabase
         .from('sales')
@@ -273,7 +399,8 @@ export const salesService = {
           discount,
           tax: 0,
           total,
-          payment_method_id: paymentEntries[0]?.methodId // Snapshot of primary payment or handle multi-payment table if exists
+          payment_method_id: paymentEntries[0]?.methodId, // FK to primary method
+          payment_method_snapshot: paymentSnapshot // Store the full string with types
         })
         .select()
         .single();
@@ -544,6 +671,119 @@ export const auditService = {
   }
 };
 
+// ==================== SUPPLIER SERVICE ====================
+export const supplierService = {
+  getAll: async (): Promise<Supplier[]> => {
+    const { data, error } = await supabase.from('suppliers').select('*').order('name');
+    if (error) throw error;
+    return data || [];
+  },
+
+  create: async (supplier: Omit<Supplier, 'id' | 'created_at'>): Promise<{ success: boolean; id?: string }> => {
+    const { data, error } = await supabase.from('suppliers').insert(supplier).select().single();
+    if (error) return { success: false };
+    return { success: true, id: data.id };
+  },
+
+  update: async (id: string, updates: Partial<Supplier>): Promise<{ success: boolean }> => {
+    const { error } = await supabase.from('suppliers').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
+    return { success: !error };
+  }
+};
+
+// ==================== EXPENSE ACCOUNT SERVICE ====================
+export const expenseAccountService = {
+  getAllAccounts: async (): Promise<ExpenseAccountModel[]> => {
+    const { data, error } = await supabase
+      .from('expense_accounts')
+      .select('*')
+      .order('name');
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  getAllSubAccounts: async (): Promise<ExpenseSubAccountModel[]> => {
+    const { data, error } = await supabase
+      .from('expense_sub_accounts')
+      .select('*')
+      .order('name');
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  getSubAccountsByAccountId: async (accountId: string): Promise<ExpenseSubAccountModel[]> => {
+    const { data, error } = await supabase
+      .from('expense_sub_accounts')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('name');
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  createAccount: async (name: string, description?: string): Promise<{ success: boolean; id?: string; error?: string }> => {
+    const { data, error } = await supabase
+      .from('expense_accounts')
+      .insert({ name, description })
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, id: data.id };
+  },
+
+  createSubAccount: async (accountId: string, name: string): Promise<{ success: boolean; id?: string; error?: string }> => {
+    const { data, error } = await supabase
+      .from('expense_sub_accounts')
+      .insert({ account_id: accountId, name })
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, id: data.id };
+  },
+
+  updateAccount: async (id: string, name: string, description?: string): Promise<{ success: boolean; error?: string }> => {
+    const { error } = await supabase
+      .from('expense_accounts')
+      .update({ name, description, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    return { success: !error, error: error?.message };
+  },
+
+  updateSubAccount: async (id: string, name: string): Promise<{ success: boolean; error?: string }> => {
+    const { error } = await supabase
+      .from('expense_sub_accounts')
+      .update({ name, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    return { success: !error, error: error?.message };
+  },
+
+  deleteAccount: async (id: string): Promise<{ success: boolean; error?: string }> => {
+    // Note: Database cascade delete should handle sub-accounts, but best to be safe
+    const { error } = await supabase
+      .from('expense_accounts')
+      .delete()
+      .eq('id', id);
+
+    return { success: !error, error: error?.message };
+  },
+
+  deleteSubAccount: async (id: string): Promise<{ success: boolean; error?: string }> => {
+    const { error } = await supabase
+      .from('expense_sub_accounts')
+      .delete()
+      .eq('id', id);
+
+    return { success: !error, error: error?.message };
+  }
+};
+
 // ==================== EXPENSE SERVICE ====================
 export const expenseService = {
   getAll: async (): Promise<Expense[]> => {
@@ -560,36 +800,250 @@ export const expenseService = {
 
     return (data || []).map(e => ({
       ...e,
+      total: e.amount || 0, // Map 'amount' from DB to 'total' for interface compatibility
       user_name: e.users?.full_name || 'Desconocido',
-      payment_method_name: e.payment_methods?.name || 'N/A'
+      payment_method_name: e.payment_methods?.name || 'N/A',
+      // Ensure defaults for older records
+      status: e.status || 'PAID',
+      remaining_amount: e.remaining_amount ?? 0,
+      payment_type: e.payment_type || 'CONTADO'
     }));
   },
 
   create: async (expense: {
-    userId: string;
-    category: string;
-    description: string;
-    amount: number;
-    paymentMethodId: string;
-    receiptNumber?: string;
-    notes?: string;
+    user_id: string;
+    date: string;
+    supplier: string;
+    supplier_id?: string; // New Optional Link
+    account: string;
+    sub_account: string;
+    total: number;
+    payment_type: 'CONTADO' | 'CREDITO';
+    image_url?: string;
   }): Promise<{ success: boolean; id?: string }> => {
+    // Logic for debt management
+    const isCredit = expense.payment_type === 'CREDITO';
+    const status = isCredit ? 'PENDING' : 'PAID';
+    const remaining_amount = isCredit ? expense.total : 0;
+
     const { data, error } = await supabase
       .from('expenses')
       .insert({
-        user_id: expense.userId,
-        category: expense.category,
-        description: expense.description,
-        amount: expense.amount,
-        payment_method_id: expense.paymentMethodId,
-        receipt_number: expense.receiptNumber,
-        notes: expense.notes
+        user_id: expense.user_id,
+        date: expense.date,
+        supplier: expense.supplier,
+        supplier_id: expense.supplier_id || null, // Link if provided
+        account: expense.account,       // Maps to Account Type
+        sub_account: expense.sub_account, // Maps to SubAccount
+        category: expense.account,        // Fallback for legacy
+        description: `${expense.supplier} - ${expense.sub_account}`, // Fallback description
+        amount: expense.total,
+        payment_type: expense.payment_type,
+        status: status,
+        remaining_amount: remaining_amount,
+        image_url: expense.image_url,
+        notes: expense.sub_account // Redundancy
       })
       .select()
       .single();
 
-    if (error) return { success: false };
+    if (error) {
+      console.error('Error creating expense:', error);
+      return { success: false };
+    }
+
+    // Fix: Ensure data exists before accessing id to prevent "Cannot read properties of null"
+    if (!data) {
+      return { success: false };
+    }
+
     return { success: true, id: data.id };
+  },
+
+  getPayments: async (expenseId: string): Promise<ExpensePayment[]> => {
+    const { data, error } = await supabase
+      .from('expense_payments')
+      .select('*')
+      .eq('expense_id', expenseId)
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching payments:', error);
+      return [];
+    }
+    return data || [];
+  },
+
+  addPayment: async (
+    expenseId: string,
+    amount: number,
+    note: string,
+    userId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      // 1. Get current expense state
+      const { data: expense, error: fetchError } = await supabase
+        .from('expenses')
+        .select('remaining_amount, amount')
+        .eq('id', expenseId)
+        .single();
+
+      if (fetchError || !expense) {
+        console.error('Error fetching expense for payment:', fetchError);
+        return {
+          success: false,
+          error: `Error al buscar el gasto. Detalle: ${fetchError?.message || 'El registro no existe o no tienes permiso para verlo.'} (Código: ${fetchError?.code || 'N/A'})`
+        };
+      }
+
+      // 2. Insert Payment Record
+      const { error: insertError } = await supabase
+        .from('expense_payments')
+        .insert({
+          expense_id: expenseId,
+          amount,
+          note,
+          user_id: userId,
+          date: new Date().toISOString()
+        });
+
+      if (insertError) {
+        console.error('Error inserting payment:', insertError);
+        return { success: false, error: `Error al guardar el abono: ${insertError.message}` };
+      }
+
+      // 3. Update Expense Status and Remaining Amount
+      const newRemaining = Math.max(0, expense.remaining_amount - amount);
+      const newStatus = newRemaining <= 0.01 ? 'PAID' : 'PARTIAL';
+
+      const { error: updateError } = await supabase
+        .from('expenses')
+        .update({
+          remaining_amount: newRemaining,
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', expenseId);
+
+      if (updateError) {
+        console.error('Error updating expense status:', updateError);
+        return { success: false, error: `Error al actualizar saldo: ${updateError.message}` };
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Unexpected error in addPayment:', err);
+      return { success: false, error: err.message || 'Error inesperado' };
+    }
+  },
+
+  getAllPayments: async (): Promise<ExpensePayment[]> => {
+    const { data, error } = await supabase
+      .from('expense_payments')
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching all payments:', error);
+      return [];
+    }
+    return data || [];
+  },
+
+  update: async (
+    expenseId: string,
+    updates: {
+      date?: string;
+      supplier?: string;
+      supplier_id?: string;
+      account?: string;
+      sub_account?: string;
+      total?: number;
+      payment_type?: 'CONTADO' | 'CREDITO';
+      image_url?: string;
+    }
+  ): Promise<{ success: boolean }> => {
+    try {
+      // Build update object
+      const updateData: any = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (updates.date !== undefined) updateData.date = updates.date;
+      if (updates.supplier !== undefined) updateData.supplier = updates.supplier;
+      if (updates.supplier_id !== undefined) updateData.supplier_id = updates.supplier_id || null;
+      if (updates.account !== undefined) {
+        updateData.account = updates.account;
+        updateData.category = updates.account; // Keep legacy field in sync
+      }
+      if (updates.sub_account !== undefined) {
+        updateData.sub_account = updates.sub_account;
+        updateData.notes = updates.sub_account; // Keep legacy field in sync
+      }
+      if (updates.total !== undefined) updateData.amount = updates.total;
+      if (updates.payment_type !== undefined) updateData.payment_type = updates.payment_type;
+      if (updates.image_url !== undefined) updateData.image_url = updates.image_url;
+
+      // Update description if supplier or sub_account changed
+      if (updates.supplier || updates.sub_account) {
+        // Get current expense to build description
+        const { data: current } = await supabase
+          .from('expenses')
+          .select('supplier, sub_account')
+          .eq('id', expenseId)
+          .single();
+
+        const supplier = updates.supplier || current?.supplier || '';
+        const subAccount = updates.sub_account || current?.sub_account || '';
+        updateData.description = `${supplier} - ${subAccount}`;
+      }
+
+      const { error } = await supabase
+        .from('expenses')
+        .update(updateData)
+        .eq('id', expenseId);
+
+      if (error) {
+        console.error('Error updating expense:', error);
+        return { success: false };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error in update expense:', error);
+      return { success: false };
+    }
+  },
+
+  delete: async (expenseId: string): Promise<{ success: boolean }> => {
+    try {
+      // First, delete any associated payments
+      const { error: paymentsError } = await supabase
+        .from('expense_payments')
+        .delete()
+        .eq('expense_id', expenseId);
+
+      if (paymentsError) {
+        console.error('Error deleting expense payments:', paymentsError);
+        return { success: false };
+      }
+
+      // Then delete the expense
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', expenseId);
+
+      if (error) {
+        console.error('Error deleting expense:', error);
+        return { success: false };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error in delete expense:', error);
+      return { success: false };
+    }
   }
 };
 
