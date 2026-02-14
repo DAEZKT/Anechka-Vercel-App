@@ -89,20 +89,34 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                 scannerInstance = new Html5Qrcode(scannerId, false);
                 scannerRef.current = scannerInstance;
 
-                // 4. Configuration - One robust attempt
-                // We use ideal constraints. Browser will downgrade if needed.
-                // We do NOT use complex fallback chains to avoid "transition" races.
+                // 3. Smart Camera Selection
+                // Explicitly list cameras to find the back one. This fixes "Front Camera Only" bugs.
+                let cameraIdOrConfig: any = { facingMode: "environment" }; // Default fallback
+
+                try {
+                    const devices = await Html5Qrcode.getCameras();
+                    if (devices && devices.length > 0) {
+                        // Try to find a back camera
+                        const backCamera = devices.find(device => {
+                            const label = device.label.toLowerCase();
+                            return label.includes('back') || label.includes('trasera') || label.includes('rear') || label.includes('environment');
+                        });
+
+                        if (backCamera) {
+                            console.log("Back camera found:", backCamera.id);
+                            cameraIdOrConfig = backCamera.id;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Error enumerating cameras, using fallback config", e);
+                }
+
+                // 4. Configuration - Optimized for Performance
                 const config = {
-                    fps: 15,
+                    fps: 5, // Reduced from 15 to 5 to fix "setTimeout handler took <N>ms" violations
                     qrbox: { width: 250, height: 250 },
                     aspectRatio: 1.0,
-                    disableFlip: false,
-                    videoConstraints: {
-                        width: { min: 640, ideal: 1280, max: 1920 },
-                        height: { min: 480, ideal: 720, max: 1080 },
-                        // @ts-ignore - focusMode is widely supported but not in standard TS defs
-                        focusMode: 'continuous'
-                    }
+                    disableFlip: false
                 };
 
                 const onSuccess = (text: string) => {
@@ -112,10 +126,10 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                     onClose();
                 };
 
-                // 5. Start with Transition Recovery
+                // 5. Start Scanner
                 try {
-                    // First arg must be EXACTLY { facingMode: "environment" } or a cameraId string
-                    await scannerInstance.start({ facingMode: "environment" }, config, onSuccess, () => { });
+                    // Now we pass either a specific ID (string) or the constraint object
+                    await scannerInstance.start(cameraIdOrConfig, config, onSuccess, () => { });
                 } catch (startErr: any) {
                     const msg = startErr?.message || "";
 
@@ -124,7 +138,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                         console.warn("Scanner locked. Retrying once...");
                         await new Promise(r => setTimeout(r, 500));
                         if (isMounted && scannerInstance) {
-                            await scannerInstance.start({ facingMode: "environment" }, config, onSuccess, () => { });
+                            await scannerInstance.start(cameraIdOrConfig, config, onSuccess, () => { });
                         }
                     } else {
                         throw startErr;
