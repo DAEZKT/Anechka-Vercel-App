@@ -33,12 +33,25 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                 scannerInstance = new Html5Qrcode(scannerId, false);
                 scannerRef.current = scannerInstance;
 
-                // Configuración Técnica Solicitada
+                // Configuración Técnica "Senior"
                 const config = {
-                    fps: 10, // Balance entre rendimiento y consumo de batería
-                    qrbox: { width: 250, height: 150 }, // Cuadro de enfoque rectangular
+                    fps: 10,
+                    qrbox: { width: 250, height: 150 },
                     aspectRatio: 1.0,
-                    disableFlip: false, // Útil para cámaras frontales, irrelevante si forzamos environment
+                    disableFlip: false,
+                    // MEJORA CLAVE: Utilizar API nativa del navegador si existe (Android/iOS)
+                    // Esto mejora drásticamente la velocidad de lectura de códigos de barras.
+                    experimentalFeatures: {
+                        useBarCodeDetectorIfSupported: true
+                    },
+                    // MEJORA DE CALIDAD: Solicitar resolución HD y enfoque
+                    videoConstraints: {
+                        facingMode: "environment", // Redundante pero seguro
+                        width: { min: 640, ideal: 1280, max: 1920 },
+                        height: { min: 480, ideal: 720, max: 1080 },
+                        // @ts-ignore - Propiedad estándar moderna no siempre en tipos TS
+                        focusMode: 'continuous'
+                    }
                 };
 
                 // Iniciar escáner forzando cámara trasera ('environment')
