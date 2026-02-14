@@ -157,6 +157,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                             errorMsg = "El escáner requiere conexión segura (HTTPS).";
                         }
 
+                        // Serialize error to see all fields
+                        try {
+                            const errorString = JSON.stringify(err3, Object.getOwnPropertyNames(err3));
+                            if (errorString !== "{}") errorMsg += `\nRaw: ${errorString}`;
+                            else errorMsg += `\nString: ${String(err3)}`;
+                        } catch (e) {
+                            errorMsg += `\nOriginal: ${String(err3)}`;
+                        }
+
                         // Don't alert "already under transition" if it's just a retry fail
                         if (!errorMsg.includes("transition")) {
                             alert(`No se pudo iniciar la cámara.\n\n${errorMsg}`);
