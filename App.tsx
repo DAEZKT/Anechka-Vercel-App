@@ -15,6 +15,7 @@ import { PendingOrdersPage } from './pages/PendingOrdersPage'; // Import Pending
 import { Layout } from './components/Layout';
 import { User, UserRole } from './types';
 import { PublicCatalogPage } from './pages/PublicCatalogPage';
+import { BrandsPage } from './pages/BrandsPage';
 import { hasPermission } from './utils/permissions';
 
 export default function App() {
@@ -80,6 +81,7 @@ export default function App() {
     if (currentPage === 'inventory-movements') return <InventoryPage user={user} initialView="MOVEMENT" />;
     if (currentPage === 'inventory-kardex') return <InventoryPage user={user} initialView="KARDEX" />;
     if (currentPage === 'inventory-audit') return <InventoryPage user={user} initialView="AUDIT" />;
+    if (currentPage === 'inventory-brands') return <BrandsPage />; // New Route for Brands
 
     // Admin / Internal Control
     if (currentPage === 'admin') return <AdminPage />;

@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { GlassCard } from '../components/GlassCard';
-import { productService, inventoryService, categoryService, auditService } from '../services/supabaseService';
-import { Product, User, MovementType, ProductGender, Category, InventoryMovementHeader, InventoryMovementDetail, AuditSession } from '../types';
+import { productService, inventoryService, categoryService, auditService, brandService } from '../services/supabaseService';
+import { Product, User, MovementType, ProductGender, Category, InventoryMovementHeader, InventoryMovementDetail, AuditSession, Brand } from '../types';
 import { Html5Qrcode } from 'html5-qrcode';
 import { ScannerModal } from '../components/ScannerModal';
 
@@ -29,6 +29,7 @@ const INITIAL_PRODUCT_FORM = {
   sku: '',
   name: '',
   brand: '',
+  brand_id: '',
   color: '',
   description: '',
   category_id: '',
@@ -88,6 +89,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
   const [currentView, setCurrentView] = useState(initialView);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -161,12 +163,14 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
 
   const refreshData = async () => {
     setLoading(true);
-    const [prods, cats] = await Promise.all([
+    const [prods, cats, brnds] = await Promise.all([
       productService.getAll(),
-      categoryService.getAll()
+      categoryService.getAll(),
+      brandService.getAll(true) // Only active brands
     ]);
     setProducts(prods);
     setCategories(cats);
+    setBrands(brnds);
 
     // Calculate Total Investment (Cost * Stock)
     const investmentPromises = prods.map(async (p) => {
@@ -210,6 +214,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
         sku: editingProduct.sku,
         name: editingProduct.name,
         brand: editingProduct.brand,
+        brand_id: editingProduct.brand_id || '',
         color: editingProduct.color,
         description: editingProduct.description,
         category_id: editingProduct.category_id,
@@ -610,6 +615,16 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
     }));
   };
 
+  const handleBrandChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const brandId = e.target.value;
+    const brandName = brands.find(b => b.id === brandId)?.name || '';
+    setNewProduct(prev => ({
+      ...prev,
+      brand_id: brandId,
+      brand: brandName
+    }));
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -623,8 +638,9 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
 
   const handleRegisterProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProduct.sku || !newProduct.name || !newProduct.brand || !newProduct.category_id) {
-      alert("Complete campos obligatorios.");
+    // Validate brand_id effectively
+    if (!newProduct.sku || !newProduct.name || !newProduct.category_id || (!newProduct.brand_id && !newProduct.brand)) {
+      alert("Complete campos obligatorios (SKU, Nombre, Categoría, Marca).");
       return;
     }
     setLoading(true);
@@ -1736,7 +1752,26 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
                   </div>
                 </div>
                 <div>
-                  <FormInput label="Marca" name="brand" value={newProduct.brand} onChange={handleProductChange} placeholder="Ej. Levi's" required />
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Marca *</label>
+                  <div className="relative">
+                    <select
+                      name="brand_id" // Use brand_id for value
+                      value={newProduct.brand_id}
+                      onChange={handleBrandChange} // Custom handler
+                      required
+                      className="w-full px-4 py-2 pr-10 rounded-lg bg-white/60 border border-white/40 focus:ring-2 focus:ring-brand-primary outline-none text-sm appearance-none"
+                    >
+                      <option value="">-- Seleccionar --</option>
+                      {brands.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
+                      <Icons.ChevronDown />
+                    </div>
+                  </div>
+                  {/* Fallback Display or Hidden Input for Legacy Text (auto-filled) */}
+                  <input type="hidden" name="brand" value={newProduct.brand} />
                 </div>
               </div>
 

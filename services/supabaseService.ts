@@ -18,7 +18,8 @@ import {
   ExpensePayment,
   Supplier,
   ExpenseAccountModel,
-  ExpenseSubAccountModel
+  ExpenseSubAccountModel,
+  Brand // Added Brand
 } from '../types';
 
 // ==================== CATEGORY SERVICE ====================
@@ -42,6 +43,66 @@ export const categoryService = {
 
     if (error) return { success: false };
     return { success: true, id: data.id };
+  }
+};
+
+// ==================== BRAND SERVICE ====================
+export const brandService = {
+  getAll: async (onlyActive: boolean = false): Promise<Brand[]> => {
+    let query = supabase
+      .from('brands')
+      .select('*')
+      .order('name');
+
+    if (onlyActive) {
+      query = query.eq('is_active', true);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  },
+
+  create: async (brand: Omit<Brand, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; id?: string }> => {
+    // Generate slug from name
+    const slug = brand.name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
+
+    const { data, error } = await supabase
+      .from('brands')
+      .insert({
+        name: brand.name,
+        slug: slug,
+        image_url: brand.image_url,
+        is_active: brand.is_active ?? true
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating brand', error);
+      return { success: false };
+    }
+    return { success: true, id: data.id };
+  },
+
+  update: async (id: string, updates: Partial<Brand>): Promise<{ success: boolean }> => {
+    const { error } = await supabase
+      .from('brands')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    return { success: !error };
+  },
+
+  delete: async (id: string): Promise<{ success: boolean }> => {
+    const { error } = await supabase
+      .from('brands')
+      .delete()
+      .eq('id', id);
+    return { success: !error };
   }
 };
 
@@ -124,6 +185,10 @@ export const productService = {
                 categories (
                     id,
                     name
+                ),
+                brands (
+                    id,
+                    name
                 )
             `)
       .order('name');
@@ -135,6 +200,8 @@ export const productService = {
       ...p,
       category_id: p.category_id || '',
       category_name: p.categories?.name || 'Sin categoría',
+      brand_id: p.brand_id || null,
+      brand_name: p.brands?.name || p.brand || 'Genérico', // Fallback to text brand
       price: p.price ?? 0,
       cost: p.cost ?? 0,
       stock_level: p.stock_level ?? 0,
@@ -161,7 +228,8 @@ export const productService = {
         name: product.name,
         description: product.description,
         category_id: product.category_id || null,
-        brand: product.brand,
+        brand: product.brand, // Legacy text
+        brand_id: product.brand_id || null, // FK
         color: product.color,
         size: product.size,
         gender: product.gender,
@@ -191,6 +259,7 @@ export const productService = {
         description: updates.description,
         category_id: updates.category_id,
         brand: updates.brand,
+        brand_id: updates.brand_id, // Update FK
         color: updates.color,
         size: updates.size,
         gender: updates.gender,

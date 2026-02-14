@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { productService, categoryService, orderService } from '../services/supabaseService';
-import { Product, Category, CartItem } from '../types';
+import { productService, categoryService, orderService, brandService } from '../services/supabaseService';
+import { Product, Category, CartItem, Brand } from '../types';
 import { GlassCard } from '../components/GlassCard';
 import { Captcha } from '../components/Captcha';
 
@@ -31,9 +31,11 @@ const Icons = {
 export const PublicCatalogPage: React.FC = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    const [brands, setBrands] = useState<Brand[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+    const [selectedBrand, setSelectedBrand] = useState<string>('ALL');
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCheckoutFormOpen, setIsCheckoutFormOpen] = useState(false);
 
@@ -45,12 +47,14 @@ export const PublicCatalogPage: React.FC = () => {
 
     useEffect(() => {
         const loadData = async () => {
-            const [prods, cats] = await Promise.all([
+            const [prods, cats, brnds] = await Promise.all([
                 productService.getAll(),
-                categoryService.getAll()
+                categoryService.getAll(),
+                brandService.getAll(true)
             ]);
             setProducts(prods.filter(p => p.stock_level > 0));
             setCategories(cats);
+            setBrands(brnds);
         };
         loadData();
     }, []);
@@ -170,9 +174,10 @@ export const PublicCatalogPage: React.FC = () => {
     };
 
     const filteredProducts = products.filter(p => {
-        const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.brand.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || (p.brand_name || p.brand).toLowerCase().includes(searchTerm.toLowerCase());
         const matchCategory = selectedCategory === 'ALL' || p.category_id === selectedCategory;
-        return matchSearch && matchCategory;
+        const matchBrand = selectedBrand === 'ALL' || p.brand_id === selectedBrand || (!p.brand_id && p.brand === selectedBrand); // Handle legacy text match if needed, though ID preferred
+        return matchSearch && matchCategory && matchBrand;
     });
 
     const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -213,11 +218,11 @@ export const PublicCatalogPage: React.FC = () => {
             <div className="max-w-7xl mx-auto w-full">
                 {/* Filters */}
                 <div className="p-4 space-y-3 sticky top-[60px] z-20 bg-gray-50/95 backdrop-blur-sm">
-                    <div className="relative max-w-lg mx-auto md:mx-0">
+                    <div className="relative max-w-lg mx-auto md:mx-0 mb-6">
                         <input
                             type="text"
                             placeholder="Buscar productos..."
-                            className="w-full pl-10 pr-4 py-2.5 rounded-full border border-gray-200 shadow-sm focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary bg-white text-sm transition-all"
+                            className="w-full pl-10 pr-4 py-3 rounded-2xl border-none shadow-sm focus:ring-2 focus:ring-brand-primary/20 bg-white text-sm transition-all text-gray-700 placeholder:text-gray-400 font-medium"
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                         />
@@ -226,10 +231,51 @@ export const PublicCatalogPage: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar mask-gradient-right">
+                    {/* Brand Filter - Premium Pill Design */}
+                    <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar mask-gradient-right items-center">
+                        <button
+                            onClick={() => setSelectedBrand('ALL')}
+                            className={`min-w-[80px] h-[45px] rounded-xl flex items-center justify-center px-4 transition-all duration-300 font-bold text-xs tracking-wide shadow-sm flex-shrink-0
+                                ${selectedBrand === 'ALL'
+                                    ? 'bg-gray-900 text-white shadow-lg shadow-gray-900/20 scale-105'
+                                    : 'bg-white text-gray-500 hover:bg-white hover:text-gray-800'}`}
+                        >
+                            TODAS
+                        </button>
+
+                        {brands.map(brand => (
+                            <button
+                                key={brand.id}
+                                onClick={() => setSelectedBrand(brand.id)}
+                                className={`min-w-[80px] h-[45px] bg-white rounded-xl flex items-center justify-center px-4 py-2 transition-all duration-300 shadow-sm group border flex-shrink-0
+                                    ${selectedBrand === brand.id
+                                        ? 'border-brand-primary ring-2 ring-brand-primary/10 shadow-lg shadow-brand-primary/10 scale-105 z-10'
+                                        : 'border-transparent hover:border-gray-100 hover:shadow-md'}`}
+                                title={brand.name}
+                            >
+                                {brand.image_url ? (
+                                    <img
+                                        src={brand.image_url}
+                                        alt={brand.name}
+                                        className={`h-full w-auto object-contain transition-all duration-300 ${selectedBrand === brand.id ? 'opacity-100' : 'opacity-80 group-hover:opacity-100 grayscale-0'}`}
+                                    />
+                                ) : (
+                                    <span className={`text-[10px] font-bold uppercase transition-colors ${selectedBrand === brand.id ? 'text-brand-primary' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                                        {brand.name}
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Category Filter - Minimal Chips */}
+                    <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar mask-gradient-right">
                         <button
                             onClick={() => setSelectedCategory('ALL')}
-                            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${selectedCategory === 'ALL' ? 'bg-brand-primary text-white border-brand-primary shadow-md shadow-brand-primary/20' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
+                            className={`px-5 py-2 rounded-full text-xs font-medium transition-all duration-200 border
+                                ${selectedCategory === 'ALL'
+                                    ? 'bg-brand-primary text-white border-brand-primary shadow-md shadow-brand-primary/20'
+                                    : 'bg-transparent text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
                         >
                             Todos
                         </button>
@@ -237,7 +283,10 @@ export const PublicCatalogPage: React.FC = () => {
                             <button
                                 key={cat.id}
                                 onClick={() => setSelectedCategory(cat.id)}
-                                className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${selectedCategory === cat.id ? 'bg-brand-primary text-white border-brand-primary shadow-md shadow-brand-primary/20' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
+                                className={`px-5 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-200 border
+                                    ${selectedCategory === cat.id
+                                        ? 'bg-brand-primary text-white border-brand-primary shadow-md shadow-brand-primary/20'
+                                        : 'bg-transparent text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
                             >
                                 {cat.name}
                             </button>
@@ -279,7 +328,7 @@ export const PublicCatalogPage: React.FC = () => {
                                         {product.name}
                                     </h3>
                                     <div className="flex flex-wrap items-center gap-2 mt-1">
-                                        <p className="text-[10px] text-gray-500 truncate">{product.brand || 'Genérico'}</p>
+                                        <p className="text-[10px] text-gray-500 truncate">{product.brand_name || product.brand || 'Genérico'}</p>
                                         {product.size && (
                                             <span className="text-[9px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded border border-gray-200">
                                                 {product.size}

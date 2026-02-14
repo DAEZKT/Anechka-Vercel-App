@@ -56,7 +56,9 @@ export interface Product {
   id: string; // UUID (IdProducto)
   sku: string; // Identificador único comercial (Barcode)
   name: string; // Nombre del Producto
-  brand: string; // Marca
+  brand: string; // Marca (Legacy Text) - Still kept for reading, but writing should prioritize brand_id
+  brand_id?: string; // New: FK to Brand
+  brand_name?: string; // Helper for UI
   description?: string; // Descripción
   category_id?: string; // FK to Category
   category_name?: string; // Helper for UI
@@ -231,4 +233,15 @@ export interface Order {
   items: CartItem[]; // JSONB in DB
   total: number;
   status: 'PENDING' | 'COMPLETED' | 'CANCELLED';
+}
+
+// --- BRAND MODULE ---
+export interface Brand {
+  id: string;
+  name: string;
+  slug: string;
+  image_url?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }

@@ -209,6 +209,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
                     label="Nuevo Producto"
                   />
                   <NavSubButton
+                    active={currentPage === 'inventory-brands'}
+                    onClick={() => handleMobileNavigate('inventory-brands')}
+                    label="Marcas"
+                  />
+                  <NavSubButton
                     active={currentPage === 'inventory-movements'}
                     onClick={() => handleMobileNavigate('inventory-movements')}
                     label="Movimientos"
