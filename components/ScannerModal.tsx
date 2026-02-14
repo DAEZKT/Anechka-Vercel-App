@@ -67,114 +67,60 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
     };
 
     useEffect(() => {
-        if (!isOpen) {
-            // Cleanup is handled by the return of the previous effect or explicit cleanup below
-            return;
-        }
+        if (!isOpen) return;
 
-        let isMounted = true;
         let scannerInstance: Html5Qrcode | null = null;
-
-        const cleanupScanner = async () => {
-            if (!scannerInstance) return;
-            try {
-                if (scannerInstance.isScanning) {
-                    await scannerInstance.stop();
-                }
-                await scannerInstance.clear();
-            } catch (error) {
-                console.warn("Error cleaning up scanner:", error);
-            }
-            scannerInstance = null;
-        };
+        let isMounted = true;
 
         const startScanner = async () => {
-            // Wait for DOM
-            await new Promise(r => setTimeout(r, 300));
+            // Wait a moment for the modal to animate in
+            await new Promise(r => setTimeout(r, 400));
             if (!isMounted) return;
 
             const scannerId = "html5qr-reader-fullscreen";
-            if (!document.getElementById(scannerId)) {
-                console.error("Scanner element not found");
-                return;
-            }
 
-            // Create instance
+            // Hard cleanup of any previous DOM issues
+            const element = document.getElementById(scannerId);
+            if (!element) return;
+            element.innerHTML = "";
+
             try {
                 scannerInstance = new Html5Qrcode(scannerId, false);
                 scannerRef.current = scannerInstance;
-            } catch (e) {
-                // If "code already used", it means we didn't cleanup properly previous time. 
-                // We can't really recover easily without a hard reload or robust cleanup.
-                console.error("Failed to create Html5Qrcode instance", e);
-                return;
-            }
 
-            const qrConfig = {
-                fps: 20,
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0,
-                disableFlip: false
-            };
+                // PREVIOUS CONFIG WAS TOO AGGRESSIVE. 
+                // We use standard config now for maximum compatibility.
+                const config = {
+                    fps: 10, // Lower FPS = Better focus on generic phones
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0,
+                    disableFlip: false
+                };
 
-            const startTime = Date.now();
-            const onSuccess = (decodedText: string) => {
-                if (!isMounted) return;
+                // Simple start - NO width/height constraints causing crashes
+                await scannerInstance.start(
+                    { facingMode: "environment" },
+                    config,
+                    (decodedText) => {
+                        if (!isMounted) return;
+                        playBeep();
+                        onScan(decodedText);
+                        onClose();
+                    },
+                    () => { } // Ignore frame errors
+                );
 
-                // Debounce scans (ignore first 1.5s)
-                if (Date.now() - startTime < 1500) return;
-
-                playBeep();
-                onScan(decodedText);
-                onClose();
-            };
-
-            // Attempt sequence
-            const tryStart = async (config: any) => {
-                if (!scannerInstance) return false;
-                try {
-                    await scannerInstance.start(config, qrConfig, onSuccess, () => { });
-                    return true;
-                } catch (err: any) {
-                    const msg = err?.message || "";
-                    if (msg.includes("transition")) {
-                        // Critical race condition: wait and retry once
-                        await new Promise(r => setTimeout(r, 500));
-                        try {
-                            await scannerInstance.start(config, qrConfig, onSuccess, () => { });
-                            return true;
-                        } catch (retryErr) {
-                            return false;
-                        }
-                    }
-                    return false;
+                if (isMounted) {
+                    setLoading(false);
+                    setHasTorch(true);
                 }
-            };
 
-            setLoading(true);
-
-            // 1. Try High Res
-            let success = await tryStart({ facingMode: "environment", width: { min: 640, ideal: 1280, max: 1920 }, height: { min: 480, ideal: 720, max: 1080 } });
-
-            // 2. Try Standard if failed
-            if (!success && isMounted) {
-                console.warn("Retrying with standard config...");
-                success = await tryStart({ facingMode: "environment" });
-            }
-
-            // 3. Try User/Any if failed
-            if (!success && isMounted) {
-                console.warn("Retrying with any camera...");
-                success = await tryStart({ facingMode: "user" });
-            }
-
-            if (!success && isMounted) {
-                // Final error reporting
-                alert("No se pudo iniciar la cámara. Verifique permisos HTTPS o que la cámara no esté en uso por otra app.");
-                onClose();
-            } else if (isMounted) {
-                setLoading(false);
-                setHasTorch(true);
+            } catch (err: any) {
+                console.error("Scanner Error", err);
+                if (isMounted) {
+                    alert(`Error de cámara: ${err?.message || "No se pudo iniciar"}`);
+                    onClose();
+                }
             }
         };
 
@@ -182,7 +128,14 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
         return () => {
             isMounted = false;
-            cleanupScanner();
+            if (scannerInstance) {
+                // Best effort cleanup
+                scannerInstance.stop().then(() => {
+                    return scannerInstance?.clear();
+                }).catch(() => {
+                    // Ignore stop/clear errors during unmount
+                });
+            }
         };
     }, [isOpen]);
 
