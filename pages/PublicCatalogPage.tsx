@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { productService, categoryService } from '../services/supabaseService';
+import { productService, categoryService, orderService } from '../services/supabaseService';
 import { Product, Category, CartItem } from '../types';
 import { GlassCard } from '../components/GlassCard';
+import { Captcha } from '../components/Captcha';
 
 // Icons need to be redefined here or imported if exported. Copying for self-containment or could import.
 // Let's copy simple versions to avoid dependency issues if Layout isn't exporting them.
@@ -40,6 +41,7 @@ export const PublicCatalogPage: React.FC = () => {
     const [customerName, setCustomerName] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
     const [customerGPS, setCustomerGPS] = useState('');
+    const [isCaptchaValid, setIsCaptchaValid] = useState(false);
 
     useEffect(() => {
         const loadData = async () => {
@@ -66,7 +68,7 @@ export const PublicCatalogPage: React.FC = () => {
             }
             return [...prev, { ...product, quantity: 1 }];
         });
-        setIsCartOpen(true);
+        // setIsCartOpen(true); // Don't auto open cart
     };
 
     const updateQuantity = (productId: string, delta: number) => {
@@ -93,16 +95,42 @@ export const PublicCatalogPage: React.FC = () => {
         requestGPSLocation();
     };
 
-    const handleFinalCheckout = () => {
+    const handleFinalCheckout = async () => {
         if (!customerName.trim()) {
             alert('Por favor ingresa tu nombre');
             return;
         }
 
+        if (!isCaptchaValid) {
+            alert("Por favor verifica el código de seguridad (Captcha)");
+            return;
+        }
+
+        // Sanitize content (basic example, Supabase and React already handle most XSS/SQLi)
+        // PostgreSQL parameterization handles SQLi, but we should trim
+        const cleanName = customerName.trim().replace(/[<>]/g, ""); // Basic strip tags
+        const cleanAddress = customerAddress.trim().replace(/[<>]/g, "");
+        const cleanGPS = customerGPS.trim().replace(/[<>]/g, "");
+
+        const totalItems = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+        // 1. Save Order to Database
+        try {
+            await orderService.create({
+                customer_name: cleanName,
+                customer_address: cleanAddress,
+                customer_gps: cleanGPS,
+                items: cart,
+                total: totalItems
+            });
+        } catch (error) {
+            console.error("Error saving order", error);
+        }
+
         let message = `NUEVO PEDIDO - CATÁLOGO WEB\n\n`;
-        message += `CLIENTE: ${customerName}\n`;
-        if (customerAddress.trim()) message += `DIRECCIÓN: ${customerAddress}\n`;
-        if (customerGPS.trim()) message += `UBICACIÓN GPS: ${customerGPS}\n`;
+        message += `CLIENTE: ${cleanName}\n`;
+        if (cleanAddress) message += `DIRECCIÓN: ${cleanAddress}\n`;
+        if (cleanGPS) message += `UBICACIÓN GPS: ${cleanGPS}\n`;
         message += `\nPRODUCTOS:\n`;
 
         let total = 0;
@@ -130,7 +158,7 @@ export const PublicCatalogPage: React.FC = () => {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     const { latitude, longitude } = position.coords;
-                    setCustomerGPS(`${latitude}, ${longitude}`);
+                    setCustomerGPS(`https://www.google.com/maps?q=${latitude},${longitude}`);
                 },
                 (error) => {
                     console.log('GPS no disponible o denegado por el usuario');
@@ -181,73 +209,99 @@ export const PublicCatalogPage: React.FC = () => {
                 </button>
             </header>
 
-            {/* Filters */}
-            <div className="p-4 space-y-3">
-                <div className="relative">
-                    <input
-                        type="text"
-                        placeholder="Buscar productos..."
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border-none shadow-sm focus:ring-2 focus:ring-brand-primary bg-white"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                    />
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                        <Icons.Search />
+            {/* Main Content with Container */}
+            <div className="max-w-7xl mx-auto w-full">
+                {/* Filters */}
+                <div className="p-4 space-y-3 sticky top-[60px] z-20 bg-gray-50/95 backdrop-blur-sm">
+                    <div className="relative max-w-lg mx-auto md:mx-0">
+                        <input
+                            type="text"
+                            placeholder="Buscar productos..."
+                            className="w-full pl-10 pr-4 py-2.5 rounded-full border border-gray-200 shadow-sm focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary bg-white text-sm transition-all"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                            <Icons.Search />
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar mask-gradient-right">
+                        <button
+                            onClick={() => setSelectedCategory('ALL')}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${selectedCategory === 'ALL' ? 'bg-brand-primary text-white border-brand-primary shadow-md shadow-brand-primary/20' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
+                        >
+                            Todos
+                        </button>
+                        {categories.map(cat => (
+                            <button
+                                key={cat.id}
+                                onClick={() => setSelectedCategory(cat.id)}
+                                className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${selectedCategory === cat.id ? 'bg-brand-primary text-white border-brand-primary shadow-md shadow-brand-primary/20' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
+                            >
+                                {cat.name}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
-                <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                    <button
-                        onClick={() => setSelectedCategory('ALL')}
-                        className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${selectedCategory === 'ALL' ? 'bg-brand-primary text-white' : 'bg-white text-gray-600 shadow-sm'}`}
-                    >
-                        Todos
-                    </button>
-                    {categories.map(cat => (
-                        <button
-                            key={cat.id}
-                            onClick={() => setSelectedCategory(cat.id)}
-                            className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${selectedCategory === cat.id ? 'bg-brand-primary text-white' : 'bg-white text-gray-600 shadow-sm'}`}
-                        >
-                            {cat.name}
-                        </button>
-                    ))}
-                </div>
-            </div>
+                {/* Product Grid */}
+                <div className="px-4 pb-8 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                    {filteredProducts.map(product => (
+                        <div key={product.id} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col h-full border border-gray-100 group animate-fade-in-up">
+                            {/* Image Container - Aspect Square for Uniformity */}
+                            <div className="relative aspect-square bg-gray-50 overflow-hidden">
+                                {product.image_url ? (
+                                    <img
+                                        src={product.image_url}
+                                        alt={product.name}
+                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
+                                        <span className="text-[10px] mt-2 font-medium">Sin Imagen</span>
+                                    </div>
+                                )}
 
-            {/* Product Grid */}
-            <div className="px-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {filteredProducts.map(product => (
-                    <div key={product.id} className="bg-white rounded-xl overflow-hidden shadow-sm flex flex-col h-full animate-fade-in-up">
-                        <div className="relative aspect-video bg-gray-100">
-                            {product.image_url ? (
-                                <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                    <span className="text-xs">Sin Imagen</span>
+                                {/* Stock Badge */}
+                                {product.stock_level > 0 && product.stock_level < 5 && (
+                                    <span className="absolute top-2 right-2 bg-orange-500/90 backdrop-blur-sm text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm z-10">
+                                        Quedan {product.stock_level}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-3 flex-1 flex flex-col">
+                                <div className="mb-2">
+                                    <h3 className="font-bold text-sm text-gray-800 line-clamp-2 leading-tight min-h-[2.5em]" title={product.name}>
+                                        {product.name}
+                                    </h3>
+                                    <p className="text-[10px] text-gray-500 mt-1 truncate">{product.brand || 'Genérico'}</p>
                                 </div>
-                            )}
-                            {product.stock_level < 5 && (
-                                <span className="absolute top-1 right-1 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">
-                                    ¡{product.stock_level} disponibles!
-                                </span>
-                            )}
-                        </div>
-                        <div className="p-2.5 flex-1 flex flex-col">
-                            <h3 className="font-bold text-xs text-gray-900 line-clamp-2 leading-snug">{product.name}</h3>
-                            <p className="text-[10px] text-gray-500 mt-0.5">{product.brand}</p>
-                            <div className="mt-auto pt-2 flex items-center justify-between">
-                                <span className="font-bold text-base text-brand-primary">${product.price.toFixed(2)}</span>
-                                <button
-                                    onClick={() => addToCart(product)}
-                                    className="w-7 h-7 rounded-full bg-brand-primary text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
-                                >
-                                    <Icons.Plus />
-                                </button>
+
+                                <div className="mt-auto pt-2 flex items-end justify-between border-t border-gray-50">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] text-gray-400 font-medium line-through decoration-gray-300 hidden">
+                                            {/* Idea: Show MSRP if needed later */}
+                                        </span>
+                                        <span className="font-bold text-lg text-brand-primary leading-none">
+                                            ${product.price.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => addToCart(product)}
+                                        className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary border border-gray-200 flex items-center justify-center hover:bg-brand-primary hover:text-white hover:border-brand-primary hover:shadow-lg hover:shadow-brand-primary/30 active:scale-95 transition-all"
+                                        title="Agregar al Carrito"
+                                    >
+                                        <Icons.Plus />
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
 
             {/* Cart Modal / Sheet */}
@@ -370,6 +424,11 @@ export const PublicCatalogPage: React.FC = () => {
                                     <span className="text-gray-600">Total a Pagar:</span>
                                     <span className="font-black text-xl text-brand-primary">${cartTotal.toFixed(2)}</span>
                                 </div>
+                            </div>
+
+                            <div className="pt-2">
+                                <label className="block text-xs font-bold text-gray-600 mb-2">Verificación de Seguridad</label>
+                                <Captcha onVerify={setIsCaptchaValid} />
                             </div>
                         </div>
 

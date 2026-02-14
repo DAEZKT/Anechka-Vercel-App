@@ -157,31 +157,32 @@ export const CustomersPage = () => {
   return (
     <div className="space-y-6 animate-fade-in-up">
       {/* Header Responsivo */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+      {/* Header Responsivo */}
+      <header className="flex flex-col xl:flex-row justify-between xl:items-end gap-6 bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-100">
         <div>
-          <h2 className="text-3xl font-bold text-gray-800">Cartera de Clientes</h2>
-          <p className="text-gray-500">Gestión de relaciones y análisis de lealtad.</p>
+          <h2 className="text-2xl md:text-3xl font-black text-gray-800 tracking-tight">Cartera de Clientes</h2>
+          <p className="text-sm md:text-base text-gray-500 font-medium">Gestión de relaciones y análisis de lealtad.</p>
         </div>
-        <div className="flex gap-2">
-          <div className="flex bg-gray-100 p-1 rounded-xl">
+        <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+          <div className="flex bg-gray-50 p-1.5 rounded-xl border border-gray-200 flex-1 sm:flex-none">
             <button
               onClick={() => setActiveTab('LIST')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'LIST' ? 'bg-white text-brand-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all text-center ${activeTab === 'LIST' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}
             >
               Lista
             </button>
             <button
               onClick={() => setActiveTab('ANALYSIS')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1 ${activeTab === 'ANALYSIS' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'ANALYSIS' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}
             >
               <Icons.Trophy /> Top Consumo
             </button>
           </div>
           <button
             onClick={handleOpenCreate}
-            className="bg-brand-primary hover:bg-brand-secondary text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-brand-primary/20 transition-all flex items-center gap-2"
+            className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-all flex items-center justify-center gap-2 transform active:scale-95"
           >
-            <Icons.Plus /> <span>Nuevo</span>
+            <Icons.Plus /> <span>Nuevo Cliente</span>
           </button>
         </div>
       </header>
@@ -239,30 +240,33 @@ export const CustomersPage = () => {
                         </td>
 
                         {/* ID */}
+                        {/* ID */}
                         <td className="py-4 px-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-medium ${!cust.nit || cust.nit === 'CF' ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
-                            <Icons.Badge /> {cust.nit || 'CF'}
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-medium ${!cust.nit || cust.nit === 'CF' ? 'bg-gray-50 text-gray-400' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                            {!cust.nit || cust.nit === 'CF' ? 'sin datos' : cust.nit}
                           </span>
                         </td>
 
                         {/* Contacto */}
                         <td className="py-4 px-4">
                           <div className="flex flex-col gap-1.5">
-                            {cust.phone && (
+                            {cust.phone ? (
                               <div className="flex items-center gap-2 text-gray-600 text-xs">
                                 <span className="text-gray-400"><Icons.Phone /></span>
                                 <span className="font-medium">{cust.phone}</span>
                               </div>
+                            ) : (
+                              <span className="text-gray-300 text-[10px] italic pl-6">sin teléfono</span>
                             )}
-                            {cust.email && (
+
+                            {cust.email ? (
                               <div className="flex items-center gap-2 text-gray-500 text-xs">
                                 <span className="text-gray-400"><Icons.Mail /></span>
                                 <a href={`mailto:${cust.email}`} className="hover:text-brand-primary truncate max-w-[150px] transition-colors">
                                   {cust.email}
                                 </a>
                               </div>
-                            )}
-                            {!cust.phone && !cust.email && <span className="text-gray-300 text-xs italic">- Sin contacto -</span>}
+                            ) : null}
                           </div>
                         </td>
 
@@ -274,7 +278,7 @@ export const CustomersPage = () => {
                               <span className="text-gray-600 text-xs whitespace-normal leading-tight">{cust.address}</span>
                             </div>
                           ) : (
-                            <span className="text-gray-300 text-xs text-center block w-full">-</span>
+                            <span className="text-gray-300 text-[10px] italic pl-6">sin dirección</span>
                           )}
                         </td>
 

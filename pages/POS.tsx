@@ -6,6 +6,7 @@ import { geminiService } from '../services/geminiService';
 import { Product, CartItem, User, PaymentMethod, Customer, PaymentMethodType, Category, ProductGender } from '../types';
 import { Html5Qrcode } from 'html5-qrcode';
 import { jsPDF } from "jspdf";
+import { ScannerModal } from '../components/ScannerModal';
 
 // --- PAYMENT ICONS (Lucide) ---
 const PaymentIcons = {
@@ -185,62 +186,16 @@ export const POS: React.FC<POSProps> = ({ user }) => {
     window.open(doc.output('bloburl'), '_blank');
   };
 
-  // --- SCANNER LOGIC ---
-  useEffect(() => {
-    if (isScanning) {
-      const startScanner = async () => {
-        await new Promise(r => setTimeout(r, 100)); // Wait for DOM
-
-        try {
-          const html5QrCode = new Html5Qrcode("reader_pos");
-          scannerRef.current = html5QrCode;
-
-          await html5QrCode.start(
-            { facingMode: "environment" },
-            { fps: 10, qrbox: { width: 250, height: 250 } },
-            (decodedText) => {
-              // Success: Handle scan
-              handleScanSuccess(decodedText);
-              setIsScanning(false);
-              html5QrCode.stop().catch(console.error);
-            },
-            () => { } // Ignore errors
-          );
-        } catch (err) {
-          console.error("Error starting camera", err);
-          alert("No se pudo iniciar la cámara.");
-          setIsScanning(false);
-        }
-      };
-      startScanner();
-    }
-
-    return () => {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().then(() => scannerRef.current?.clear()).catch(console.error);
-      }
-    };
-  }, [isScanning, products]); // Depend on products to find match immediately
-
+  // --- SCANNER LOGIC REPLACED BY MODAL ---
   const handleScanSuccess = (code: string) => {
     setSearchTerm(code);
     // Try to auto-add if exact match
     const exactMatch = products.find(p => p.sku.toLowerCase() === code.toLowerCase());
     if (exactMatch) {
       addToCart(exactMatch);
-      setSearchTerm(''); // Clear after adding
-      // Feedback?
+      // setSearchTerm(''); // Optional: clear search if added
     } else {
       alert(`Código ${code} no encontrado o no exacto.`);
-    }
-  };
-
-  const handleCloseScanner = async () => {
-    if (scannerRef.current && scannerRef.current.isScanning) {
-      try {
-        await scannerRef.current.stop();
-        scannerRef.current.clear();
-      } catch (e) { console.error(e); }
     }
     setIsScanning(false);
   };
@@ -1073,25 +1028,13 @@ export const POS: React.FC<POSProps> = ({ user }) => {
       )}
 
       {/* SCANNER MODAL OVERLAY */}
-      {isScanning && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <GlassCard className="w-full max-w-sm bg-black/50 border-white/20 shadow-2xl overflow-hidden relative">
-            <button
-              onClick={handleCloseScanner}
-              className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 bg-black/50 rounded-full p-1"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-            </button>
 
-            <div className="text-center mb-4">
-              <h3 className="text-white font-bold">Escanear Producto</h3>
-              <p className="text-xs text-gray-300">Apunte la cámara hacia el código</p>
-            </div>
-
-            <div id="reader_pos" className="overflow-hidden rounded-lg bg-black"></div>
-          </GlassCard>
-        </div>
-      )}
+      <ScannerModal
+        isOpen={isScanning}
+        onClose={() => setIsScanning(false)}
+        onScan={handleScanSuccess}
+        title="Escáner"
+      />
     </div>
   );
 };

@@ -12,6 +12,7 @@ import {
   InventoryMovementDetail,
   Expense, // Keeping Expense as it's used in the service, not ExpenseHeader
   AuditSession,
+  Order, // Public Orders
   MovementType,
   CartItem,
   ExpensePayment,
@@ -1206,3 +1207,52 @@ export const userService = {
 export const MOCK_USERS = [
   // Keep for reference if needed, but logic now uses DB
 ];
+
+// ==================== ORDER SERVICE (Public Catalog) ====================
+export const orderService = {
+  create: async (order: {
+    customer_name: string;
+    customer_address?: string;
+    customer_gps?: string;
+    items: CartItem[];
+    total: number;
+    phone?: string;
+  }): Promise<{ success: boolean; id?: string }> => {
+    // Explicitly allow public insert via RLS, but we use the anon client here
+    const { data, error } = await supabase
+      .from('orders')
+      .insert({
+        customer_name: order.customer_name,
+        customer_address: order.customer_address,
+        customer_gps: order.customer_gps,
+        items: order.items, // JSONB
+        total: order.total,
+        status: 'PENDING'
+      }); // Removed .select() to avoid RLS Select error for anon
+
+    if (error) {
+      console.error('Error creating order:', error);
+      return { success: false };
+    }
+    return { success: true }; // No ID returned for public orders, but that's fine
+  },
+
+  getAll: async (): Promise<Order[]> => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  updateStatus: async (id: string, status: 'PENDING' | 'COMPLETED' | 'CANCELLED'): Promise<{ success: boolean }> => {
+    const { error } = await supabase
+      .from('orders')
+      .update({ status })
+      .eq('id', id);
+
+    return { success: !error };
+  }
+};

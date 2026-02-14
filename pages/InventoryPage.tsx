@@ -4,6 +4,7 @@ import { GlassCard } from '../components/GlassCard';
 import { productService, inventoryService, categoryService, auditService } from '../services/supabaseService';
 import { Product, User, MovementType, ProductGender, Category, InventoryMovementHeader, InventoryMovementDetail, AuditSession } from '../types';
 import { Html5Qrcode } from 'html5-qrcode';
+import { ScannerModal } from '../components/ScannerModal';
 
 interface InventoryPageProps {
   user: User;
@@ -243,86 +244,43 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
     fetchData();
   }, [selectedProductId, products]);
 
-  // --- DIRECT CAMERA SCANNER LOGIC (For Barcodes) ---
-  useEffect(() => {
-    if (isScanning) {
-      const startScanner = async () => {
-        // Wait briefly for DOM element "reader" to be mounted
-        await new Promise(r => setTimeout(r, 100));
+  // --- SCANNER LOGIC REPLACED BY MODAL ---
+  const handleScanSuccess = (decodedText: string) => {
+    console.log("Scanned:", decodedText);
 
-        try {
-          const html5QrCode = new Html5Qrcode("reader");
-          scannerRef.current = html5QrCode;
+    if (currentView === 'CATALOG') {
+      // If in Catalog (New Product), just fill SKU field
+      setNewProduct(prev => ({ ...prev, sku: decodedText }));
+    } else if (currentView === 'MOVEMENT') {
+      // If in Movement, fill SKU AND try to select product
+      setMovementSku(decodedText);
 
-          await html5QrCode.start(
-            { facingMode: "environment" }, // Prefer back camera
-            {
-              fps: 10,
-              qrbox: { width: 250, height: 250 },
-            },
-            (decodedText) => {
-              // Success Handler
-              // Success Handler
-              if (currentView === 'CATALOG') {
-                // If in Catalog (New Product), just fill SKU field
-                setNewProduct(prev => ({ ...prev, sku: decodedText }));
-              } else if (currentView === 'MOVEMENT') {
-                // If in Movement, fill SKU AND try to select product
-                setMovementSku(decodedText);
-
-                // Auto-find product in available list
-                const foundProduct = products.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
-                if (foundProduct) {
-                  setSelectedProductId(foundProduct.id);
-                } else {
-                  alert(`Producto con SKU ${decodedText} no encontrado en el sistema.`);
-                }
-              } else if (currentView === 'AUDIT') {
-                // If in Audit, find product and FOCUS/INCREMENT
-                const foundProduct = products.find(p => p.sku === decodedText);
-                if (foundProduct) {
-                  setAuditItems(prev => ({
-                    ...prev,
-                    [foundProduct.id]: (prev[foundProduct.id] || 0) + 1
-                  }));
-                  // Optional: beep or visual feedback
-                }
-              }
-
-              setIsScanning(false);
-              html5QrCode.stop().catch(console.error);
-            },
-            (errorMessage) => {
-              // Ignore frame read errors
-            }
-          );
-        } catch (err) {
-          console.error("Error starting camera", err);
-          alert("No se pudo iniciar la cámara. Verifique permisos.");
-          setIsScanning(false);
-        }
-      };
-
-      startScanner();
-    }
-
-    // Cleanup when isScanning becomes false or component unmounts
-    return () => {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().then(() => {
-          scannerRef.current?.clear();
-        }).catch(console.error);
+      // Auto-find product in available list
+      const foundProduct = products.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
+      if (foundProduct) {
+        setSelectedProductId(foundProduct.id);
+      } else {
+        alert(`Producto con SKU ${decodedText} no encontrado en el sistema.`);
       }
-    };
-  }, [isScanning, currentView, products]); // Added dependencies to ensure it has latest state
-
-  const handleCloseScanner = async () => {
-    if (scannerRef.current && scannerRef.current.isScanning) {
-      try {
-        await scannerRef.current.stop();
-        scannerRef.current.clear();
-      } catch (e) { console.error(e); }
+    } else if (currentView === 'AUDIT') {
+      // If in Audit, find product and FOCUS/INCREMENT
+      // Try fuzzy match
+      const foundProduct = products.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
+      if (foundProduct) {
+        setAuditItems(prev => ({
+          ...prev,
+          [foundProduct.id]: (prev[foundProduct.id] || 0) + 1
+        }));
+        // Beep is handled by modal
+      } else {
+        alert("Producto no encontrado en auditoría.");
+      }
     }
+
+    setIsScanning(false);
+  };
+
+  const handleCloseScanner = () => {
     setIsScanning(false);
   };
 
@@ -786,11 +744,11 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr className="border-b border-gray-200 text-gray-500 uppercase tracking-wider text-xs">
-                    <th className="py-3 px-4">Fecha</th>
-                    <th className="py-3 px-4">Tipo</th>
-                    <th className="py-3 px-4">Glosa / Razón</th>
-                    <th className="py-3 px-4 text-right">Impacto Costo</th>
-                    <th className="py-3 px-4 text-right">Acciones</th>
+                    <th className="py-3 px-4 min-w-[160px]">Fecha</th>
+                    <th className="py-3 px-4 min-w-[100px]">Tipo</th>
+                    <th className="py-3 px-4 min-w-[300px] md:min-w-[450px]">Glosa / Razón</th>
+                    <th className="py-3 px-4 text-right min-w-[140px]">Impacto Costo</th>
+                    <th className="py-3 px-4 text-right min-w-[100px]">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1902,25 +1860,12 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
       )}
 
       {/* SCANNER MODAL (BARCODE) */}
-      {isScanning && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <GlassCard className="w-full max-w-sm bg-black/50 border-white/20 shadow-2xl overflow-hidden relative">
-            <button
-              onClick={handleCloseScanner}
-              className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 bg-black/50 rounded-full p-1"
-            >
-              <Icons.X />
-            </button>
-
-            <div className="text-center mb-4">
-              <h3 className="text-white font-bold">Escanear Código de Barras</h3>
-              <p className="text-xs text-gray-300">Apunte la cámara hacia el código</p>
-            </div>
-
-            <div id="reader" className="overflow-hidden rounded-lg bg-black"></div>
-          </GlassCard>
-        </div>
-      )}
+      <ScannerModal
+        isOpen={isScanning}
+        onClose={() => setIsScanning(false)}
+        onScan={handleScanSuccess}
+        title="Escáner Inventario"
+      />
 
       {/* PHOTO CAMERA MODAL (PRODUCT IMAGE) */}
       {isCameraOpen && (

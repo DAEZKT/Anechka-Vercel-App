@@ -375,37 +375,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
    return (
       <div className="space-y-6 animate-fade-in-up pb-10">
          {/* HEADER & FILTERS */}
-         <header className="flex flex-col xl:flex-row justify-between xl:items-end gap-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+         {/* HEADER & FILTERS */}
+         <header className="flex flex-col xl:flex-row justify-between xl:items-end gap-6 bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-100">
             <div>
-               <h2 className="text-3xl font-black text-gray-800 tracking-tight">{getTimeGreeting()}, {user?.full_name.split(' ')[0] || 'Gerencia'}.</h2>
-               <p className="text-gray-500 font-medium">Tablero de Control y Análisis Financiero.</p>
+               <h2 className="text-2xl md:text-3xl font-black text-gray-800 tracking-tight">{getTimeGreeting()}, {user?.full_name.split(' ')[0] || 'Gerencia'}.</h2>
+               <p className="text-sm md:text-base text-gray-500 font-medium">Tablero de Control y Análisis Financiero.</p>
             </div>
 
-            <div className="flex flex-wrap gap-4 items-center">
-               <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-200">
-                  <span className="text-xs font-bold text-gray-400 uppercase px-2">Periodo:</span>
-                  <input
-                     type="date"
-                     value={dateRange.start}
-                     onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                     className="bg-white border-0 rounded-lg text-sm font-bold text-gray-700 focus:ring-2 focus:ring-violet-500 py-1.5"
-                  />
-                  <span className="text-gray-300 mx-1">➜</span>
-                  <input
-                     type="date"
-                     value={dateRange.end}
-                     onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                     className="bg-white border-0 rounded-lg text-sm font-bold text-gray-700 focus:ring-2 focus:ring-violet-500 py-1.5"
-                  />
+            <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
+               <div className="flex flex-col sm:flex-row items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-200">
+                  <span className="text-xs font-bold text-gray-400 uppercase px-2 w-full sm:w-auto text-center sm:text-left">Periodo:</span>
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-between">
+                     <input
+                        type="date"
+                        value={dateRange.start}
+                        onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                        className="flex-1 bg-white border-0 rounded-lg text-sm font-bold text-gray-700 focus:ring-2 focus:ring-violet-500 py-2 sm:py-1.5 shadow-sm sm:shadow-none pointer-events-auto"
+                     />
+                     <span className="text-gray-300">➜</span>
+                     <input
+                        type="date"
+                        value={dateRange.end}
+                        onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                        className="flex-1 bg-white border-0 rounded-lg text-sm font-bold text-gray-700 focus:ring-2 focus:ring-violet-500 py-2 sm:py-1.5 shadow-sm sm:shadow-none pointer-events-auto"
+                     />
+                  </div>
                </div>
 
                <button
                   onClick={generateExecutiveReport}
                   disabled={loading}
-                  className="bg-violet-600 hover:bg-violet-700 text-white px-5 py-3 rounded-xl font-bold shadow-lg shadow-violet-500/30 transition-all flex items-center gap-2 transform active:scale-95 text-sm"
+                  className="w-full sm:w-auto justify-center bg-violet-600 hover:bg-violet-700 text-white px-5 py-3 rounded-xl font-bold shadow-lg shadow-violet-500/30 transition-all flex items-center gap-2 transform active:scale-95 text-sm"
                >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                  Exportar Reporte PDF
+                  Exportar PDF
                </button>
             </div>
          </header>
@@ -446,7 +449,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
          {/* CHARTS ROW 1 */}
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* SALES TREND CHART */}
-            <GlassCard className="lg:col-span-2 min-h-[400px] flex flex-col p-6">
+            <GlassCard className="lg:col-span-2 min-h-[350px] md:min-h-[400px] flex flex-col p-4 md:p-6">
                <h3 className="font-bold text-lg text-gray-800 mb-4">Tendencia de Ingresos vs Egresos</h3>
                <div className="flex-1 w-full min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
@@ -498,7 +501,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
          {/* CHARTS ROW 2: DETAILS */}
          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* TOP PRODUCTS */}
-            <GlassCard className="p-6">
+            <GlassCard className="p-4 md:p-6">
                <div className="flex justify-between items-center mb-6">
                   <h3 className="font-bold text-lg text-gray-800">Productos Estrella</h3>
                   <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2 py-1 rounded-md">Top 5</span>
@@ -523,7 +526,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             </GlassCard>
 
             {/* STOCK ALERTS (ALWAYS RELEVANT) */}
-            <GlassCard className="p-6 bg-red-50/30 border-red-100/50">
+            <GlassCard className="p-4 md:p-6 bg-red-50/30 border-red-100/50">
                <div className="flex justify-between items-center mb-6">
                   <h3 className="font-bold text-lg text-red-800">Alertas de Stock</h3>
                   <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Crítico</span>
@@ -531,12 +534,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                <div className="space-y-3">
                   {lowStockItems.map((p, idx) => (
                      <div key={idx} className="flex items-center justify-between p-3 bg-white rounded-xl border border-red-100 shadow-sm">
-                        <div>
-                           <p className="font-bold text-gray-700 text-sm">{p.name}</p>
-                           <p className="text-xs text-red-400 font-medium">Stock Mínimo: {p.min_stock}</p>
+                        <div className="flex-1 min-w-0 pr-4">
+                           <p className="font-bold text-gray-700 text-sm truncate">{p.name}</p>
+                           <p className="text-xs text-red-400 font-medium whitespace-nowrap">Stock Mínimo: {p.min_stock}</p>
                         </div>
-                        <div className="text-right">
-                           <span className="block text-2xl font-black text-red-500 leading-none">{p.stock_level}</span>
+                        <div className="text-right shrink-0">
+                           <span className="block text-xl md:text-2xl font-black text-red-500 leading-none">{p.stock_level}</span>
                            <span className="text-[10px] text-gray-400 uppercase font-bold">Unidades</span>
                         </div>
                      </div>
@@ -574,11 +577,11 @@ const KPICard = ({ title, value, trend, icon, color, isAlert }: any) => {
    };
 
    return (
-      <div className={`relative overflow-hidden rounded-2xl p-6 bg-white shadow-sm border border-gray-100 group transition-all hover:shadow-lg hover:-translate-y-1 ${isAlert ? 'ring-2 ring-red-400 ring-offset-2' : ''}`}>
+      <div className={`relative overflow-hidden rounded-2xl p-4 md:p-6 bg-white shadow-sm border border-gray-100 group transition-all hover:shadow-lg hover:-translate-y-1 ${isAlert ? 'ring-2 ring-red-400 ring-offset-2' : ''}`}>
          <div className="relative z-10 flex justify-between items-start">
             <div>
-               <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">{title}</p>
-               <h3 className="text-2xl font-black text-gray-800 tracking-tight">{value}</h3>
+               <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">{title}</p>
+               <h3 className="text-xl md:text-2xl font-black text-gray-800 tracking-tight">{value}</h3>
                <p className={`text-xs font-bold mt-2 flex items-center gap-1 ${colors[color].split(' ').pop()}`}>
                   {trend}
                </p>

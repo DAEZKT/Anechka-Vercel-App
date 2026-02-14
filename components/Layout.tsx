@@ -51,6 +51,12 @@ const Icons = {
   ),
   Suppliers: ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 18H3c-.6 0-1-.4-1-1V7c0-.6.4-1 1-1h10c.6 0 1 .4 1 1v11" /><path d="M14 9h4l4 4v4c0 .6-.4 1-1 1h-2" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></svg>
+  ),
+  Orders: ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+    </svg>
   )
 };
 
@@ -148,6 +154,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
 
           {checkAccess('pos') && (
             <NavButton active={currentPage === 'pos'} onClick={() => handleMobileNavigate('pos')} icon={Icons.POS} label="Punto de Venta" />
+          )}
+
+          {checkAccess('pending-orders') && (
+            <NavButton active={currentPage === 'pending-orders'} onClick={() => handleMobileNavigate('pending-orders')} icon={Icons.Orders} label="Pedidos Web" />
           )}
 
           {checkAccess('cash-close') && (

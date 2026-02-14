@@ -218,3 +218,16 @@ export interface AuditSession {
 
   note?: string;
 }
+
+// --- ORDER MODULE (Public Catalog) ---
+export interface Order {
+  id: string;
+  created_at: string;
+  customer_name: string;
+  customer_address?: string;
+  customer_gps?: string;
+  customer_phone?: string;
+  items: CartItem[]; // JSONB in DB
+  total: number;
+  status: 'PENDING' | 'COMPLETED' | 'CANCELLED';
+}

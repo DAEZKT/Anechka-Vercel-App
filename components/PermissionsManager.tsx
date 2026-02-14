@@ -24,7 +24,8 @@ const ALL_ROUTES = [
     { key: 'inventory-audit', label: 'Inventario: Auditoría' },
     { key: 'expenses', label: 'Egresos y Gastos' },
     { key: 'admin', label: 'Control Interno y Configuración' },
-    { key: 'users', label: 'Gestión de Usuarios' }
+    { key: 'users', label: 'Gestión de Usuarios' },
+    { key: 'pending-orders', label: 'Pedidos Web Pendientes' }
 ];
 
 export const PermissionsManager: React.FC<PermissionsManagerProps> = ({ user, onUpdate }) => {

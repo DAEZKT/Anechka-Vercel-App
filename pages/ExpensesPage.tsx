@@ -456,16 +456,16 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
 
   return (
     <div className="space-y-6 animate-fade-in-up">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-800">Control de Egresos</h2>
-          <div className="flex items-center gap-2">
-            <p className="text-gray-500">Gestión de gastos, compras y Cuentas por Pagar (CxP).</p>
+      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 mb-6">
+        <div className="w-full lg:w-auto">
+          <h2 className="text-2xl md:text-3xl font-black text-gray-800 tracking-tight mb-1">Control de Egresos</h2>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <p className="text-sm text-gray-500 font-medium">Gestión de gastos, compras y CxP.</p>
             <button
               onClick={() => setIsAccountManagerOpen(true)}
-              className="text-xs text-blue-500 hover:text-blue-700 font-bold bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 transition-colors"
+              className="inline-flex items-center justify-center gap-2 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors w-fit"
             >
-              ⚙ Configurar Cuentas
+              <span className="text-lg leading-none">⚙</span> Configurar Cuentas
             </button>
           </div>
         </div>
@@ -474,9 +474,12 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
             setFormData(getInitialFormState()); // Reset form with fresh date
             setShowModal(true);
           }}
-          className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-500/20 transition-all flex items-center gap-2"
+          className="w-full sm:w-auto bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-500/20 transition-all transform active:scale-95 flex items-center justify-center gap-2"
         >
-          <span className="text-xl leading-none">+</span> Registrar Gasto
+          <div className="bg-white/20 p-1 rounded-md">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </div>
+          Registrar Nuevo Gasto
         </button>
       </header>
 
@@ -602,14 +605,14 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
         <div className="overflow-x-auto">
           {activeTab === 'SUPPLIER_BALANCE' ? (
             /* SUPPLIER BALANCE TABLE */
-            <table className="w-full text-left text-sm">
-              <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200 uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-4">Proveedor</th>
-                  <th className="py-3 px-4 text-center">Facturas Pendientes</th>
-                  <th className="py-3 px-4 text-right">Último Movimiento</th>
-                  <th className="py-3 px-4 text-right">Saldo Total</th>
-                  <th className="py-3 px-4 text-right">Acción</th>
+                  <th className="py-3 px-4 min-w-[180px]">Proveedor</th>
+                  <th className="py-3 px-4 text-center min-w-[120px]">Facturas Pendientes</th>
+                  <th className="py-3 px-4 text-right min-w-[140px]">Último Movimiento</th>
+                  <th className="py-3 px-4 text-right min-w-[120px]">Saldo Total</th>
+                  <th className="py-3 px-4 text-right min-w-[100px]">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -643,16 +646,16 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
             </table>
           ) : (
             /* STANDARD EXPENSE TABLE */
-            <table className="w-full text-left text-sm">
-              <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200 uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-4">Fecha</th>
-                  <th className="py-3 px-4">Proveedor</th>
-                  <th className="py-3 px-4">Cuenta / Detalle</th>
-                  <th className="py-3 px-4 text-center">Estado</th>
-                  <th className="py-3 px-4 text-right">Total Orig.</th>
-                  <th className="py-3 px-4 text-right">Saldo Pend.</th>
-                  <th className="py-3 px-4 text-right">Acción</th>
+                  <th className="py-3 px-4 min-w-[120px]">Fecha</th>
+                  <th className="py-3 px-4 min-w-[180px]">Proveedor</th>
+                  <th className="py-3 px-4 min-w-[180px]">Cuenta / Detalle</th>
+                  <th className="py-3 px-4 text-center min-w-[100px]">Estado</th>
+                  <th className="py-3 px-4 text-right min-w-[120px]">Total Orig.</th>
+                  <th className="py-3 px-4 text-right min-w-[120px]">Saldo Pend.</th>
+                  <th className="py-3 px-4 text-right min-w-[140px]">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

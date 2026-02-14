@@ -5,7 +5,7 @@ export const PUBLIC_ROUTES = ['public-catalog'];
 
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     [UserRole.ADMIN]: ['*'], // Access to everything
-    [UserRole.VENDEDOR]: ['pos', 'sales', 'customers', 'cash-close'],
+    [UserRole.VENDEDOR]: ['pos', 'sales', 'customers', 'cash-close', 'pending-orders'],
     [UserRole.CONTADOR]: ['dashboard', 'sales', 'expenses', 'cash-close'], // Audit? Maybe read only
     [UserRole.AUDITOR]: ['inventory-audit'],
     [UserRole.CLIENTE]: [] // No internal access

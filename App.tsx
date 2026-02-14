@@ -11,6 +11,7 @@ import { SalesPage } from './pages/SalesPage'; // Import Sales Page
 import { ExpensesPage } from './pages/ExpensesPage'; // Import Expenses Page
 import { SuppliersPage } from './pages/SuppliersPage'; // Import Suppliers Page
 import { CashClosePage } from './pages/CashClosePage'; // Import CashClose Page
+import { PendingOrdersPage } from './pages/PendingOrdersPage'; // Import PendingOrders Page
 import { Layout } from './components/Layout';
 import { User, UserRole } from './types';
 import { PublicCatalogPage } from './pages/PublicCatalogPage';
@@ -50,6 +51,7 @@ export default function App() {
     if (currentPage === 'customers') return <CustomersPage />;
     if (currentPage === 'expenses') return <ExpensesPage user={user} />;
     if (currentPage === 'suppliers') return <SuppliersPage />;
+    if (currentPage === 'pending-orders') return <PendingOrdersPage user={user} />;
 
     // Inventory Sub-routes
 
