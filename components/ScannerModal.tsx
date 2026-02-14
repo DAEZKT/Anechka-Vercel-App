@@ -73,22 +73,27 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
         let isMounted = true;
 
         const startScanner = async () => {
-            // Wait a moment for the modal to animate in
+            // Wait a bit for modal animation
             await new Promise(r => setTimeout(r, 400));
             if (!isMounted) return;
 
             const scannerId = "html5qr-reader-fullscreen";
-
-            // Hard cleanup of any previous DOM issues
             const element = document.getElementById(scannerId);
             if (!element) return;
-            element.innerHTML = "";
+            element.innerHTML = ""; // Force clean
 
             try {
                 scannerInstance = new Html5Qrcode(scannerId, false);
                 scannerRef.current = scannerInstance;
 
-                // Better Config: Try to ask for HD resolution and AutoFocus
+                // 1. First Goal: Try HD + AutoFocus
+                const hdConstraints = {
+                    facingMode: "environment",
+                    width: { min: 640, ideal: 1280, max: 1920 },
+                    height: { min: 480, ideal: 720, max: 1080 },
+                    focusMode: "continuous"
+                };
+
                 const config = {
                     fps: 15,
                     qrbox: { width: 250, height: 250 },
@@ -96,45 +101,53 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                     disableFlip: false
                 };
 
-                const cameraConstraints = {
-                    facingMode: "environment",
-                    // Ideal constraints (browser tries to match, doesn't fail if not exact)
-                    width: { min: 640, ideal: 1280, max: 1920 },
-                    height: { min: 480, ideal: 720, max: 1080 },
-                    focusMode: "continuous"
+                const onSuccess = (text: string) => {
+                    if (!isMounted) return;
+                    playBeep();
+                    onScan(text);
+                    onClose();
                 };
 
-                await scannerInstance.start(
-                    cameraConstraints,
-                    config,
-                    (decodedText) => {
-                        if (!isMounted) return;
-                        playBeep();
-                        onScan(decodedText);
-                        onClose();
-                    },
-                    () => { }
-                );
+                try {
+                    await scannerInstance.start(hdConstraints, config, onSuccess, () => { });
+                } catch (hdError) {
+                    console.warn("HD Config failed, trying Basic...", hdError);
 
-                if (isMounted) {
-                    setLoading(false);
-                    // Check torch support silently
+                    if (!isMounted) return;
+
+                    // 2. Fallback: Basic Environment (Loose constraints)
                     try {
-                        const capabilities = scannerInstance.getRunningTrackCameraCapabilities();
-                        // @ts-ignore - capability checking varies by version
-                        setHasTorch(!!capabilities?.torchFeature?.isSupported?.() || !!capabilities?.torch);
-                    } catch (e) {
-                        setHasTorch(false);
+                        await scannerInstance.start({ facingMode: "environment" }, config, onSuccess, () => { });
+                    } catch (basicError: any) {
+                        // Real failure
+                        throw basicError;
                     }
                 }
 
-            } catch (err: any) {
-                console.error("Scanner Error", err);
                 if (isMounted) {
-                    // Only alert if it's a real failure, not just a permission denial causing unmout
-                    const msg = err?.message || "Error desconocido";
-                    if (!msg.includes("Permission")) {
-                        alert(`No se pudo iniciar la cámara: ${msg}`);
+                    setLoading(false);
+                    // Checking torch safely
+                    try {
+                        const cap = scannerInstance.getRunningTrackCameraCapabilities();
+                        // @ts-ignore
+                        setHasTorch(!!cap?.torch || !!cap?.torchFeature?.isSupported?.());
+                    } catch (e) { setHasTorch(false); }
+                }
+
+            } catch (err: any) {
+                console.error("Critical Scanner Error:", err);
+                if (isMounted) {
+                    // Serialize error for debugging 'unknown' cases
+                    let errMsg = err?.message || err?.name || "Error desconocido";
+                    try {
+                        if (errMsg === "Error desconocido") {
+                            errMsg = JSON.stringify(err);
+                        }
+                    } catch (e) { }
+
+                    // Avoid "Permission denied" crashes, just close
+                    if (!errMsg.includes("Permission") && !errMsg.includes("Closing")) {
+                        alert(`No se pudo arrancar la cámara.\nInfo: ${errMsg}`);
                     }
                     onClose();
                 }
@@ -145,13 +158,20 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
         return () => {
             isMounted = false;
+            // Robust cleanup to prevent crashes
             if (scannerInstance) {
-                scannerInstance.stop().then(() => {
-                    return scannerInstance?.clear();
-                }).catch(() => {
-                    // Ignore stop errors
-                    try { scannerInstance?.clear(); } catch (e) { }
-                });
+                // We use a flag to know it's stopping to avoid double-stops
+                try {
+                    scannerInstance.stop().then(() => {
+                        return scannerInstance?.clear();
+                    }).catch((stopErr) => {
+                        // If stop fails, force clear
+                        console.warn("Stop failed", stopErr);
+                        try { scannerInstance?.clear(); } catch (e) { }
+                    });
+                } catch (e) {
+                    console.error("Cleanup sync error", e);
+                }
             }
         };
     }, [isOpen]);
