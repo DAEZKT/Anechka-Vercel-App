@@ -136,7 +136,7 @@ export const PublicCatalogPage: React.FC = () => {
         let total = 0;
         cart.forEach(item => {
             const subtotal = item.price * item.quantity;
-            message += `- ${item.quantity}x ${item.name} (${item.sku}) - $${subtotal.toFixed(2)}\n`;
+            message += `- ${item.quantity}x ${item.name} ${item.size ? `[Talla: ${item.size}]` : ''} (${item.sku}) - $${subtotal.toFixed(2)}\n`;
             total += subtotal;
         });
 
@@ -278,7 +278,14 @@ export const PublicCatalogPage: React.FC = () => {
                                     <h3 className="font-bold text-sm text-gray-800 line-clamp-2 leading-tight min-h-[2.5em]" title={product.name}>
                                         {product.name}
                                     </h3>
-                                    <p className="text-[10px] text-gray-500 mt-1 truncate">{product.brand || 'Genérico'}</p>
+                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        <p className="text-[10px] text-gray-500 truncate">{product.brand || 'Genérico'}</p>
+                                        {product.size && (
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded border border-gray-200">
+                                                {product.size}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="mt-auto pt-2 flex items-end justify-between border-t border-gray-50">
@@ -328,7 +335,10 @@ export const PublicCatalogPage: React.FC = () => {
                                         </div>
                                         <div className="flex-1">
                                             <h4 className="font-bold text-sm text-gray-800">{item.name}</h4>
-                                            <p className="text-xs text-gray-500">${item.price.toFixed(2)}</p>
+                                            <div className="flex flex-wrap gap-1 text-xs text-gray-500">
+                                                <span>${item.price.toFixed(2)}</span>
+                                                {item.size && <span className="text-gray-400">• Talla: {item.size}</span>}
+                                            </div>
                                             <div className="flex items-center gap-3 mt-2">
                                                 <button onClick={() => updateQuantity(item.id, -1)} className="p-1 bg-gray-100 rounded hover:bg-gray-200"><Icons.Minus /></button>
                                                 <span className="font-bold text-sm w-4 text-center">{item.quantity}</span>

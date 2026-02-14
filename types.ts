@@ -67,6 +67,7 @@ export interface Product {
   stock_level: number; // Stock Actual
 
   color?: string; // New: Color
+  size?: string; // New: Talla
   gender?: string; // New: Género
 
   image_url?: string; // Imagen

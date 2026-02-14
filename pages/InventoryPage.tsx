@@ -34,6 +34,7 @@ const INITIAL_PRODUCT_FORM = {
   category_id: '',
   min_stock: 5,
   gender: 'UNISEX' as ProductGender,
+  size: '',
   image_url: ''
 };
 
@@ -666,6 +667,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
       p.name.toLowerCase().includes(term) ||
       p.sku.toLowerCase().includes(term) ||
       p.brand.toLowerCase().includes(term) ||
+      (p.size && p.size.toLowerCase().includes(term)) ||
       (p.category_name && p.category_name.toLowerCase().includes(term))
     );
   });
@@ -1506,6 +1508,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
                     <th className="py-3 px-4 w-12"></th>
                     <th className="py-3 px-4 min-w-[200px]">Producto / SKU</th>
                     <th className="py-3 px-4 min-w-[120px]">Marca</th>
+                    <th className="py-3 px-4 min-w-[80px]">Talla</th>
                     <th className="py-3 px-4 min-w-[120px]">Categoría</th>
                     <th className="py-3 px-4 text-center min-w-[120px]">Estado Stock</th>
                     <th className="py-3 px-4 text-right min-w-[100px]">Precio Venta</th>
@@ -1539,6 +1542,9 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
                           </td>
                           <td className="py-3 px-4">
                             <span className="text-gray-600 font-medium">{product.brand}</span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="text-gray-800 font-bold text-xs bg-gray-100 px-2 py-1 rounded border border-gray-200">{product.size || '-'}</span>
                           </td>
                           <td className="py-3 px-4">
                             <span className="px-2 py-1 rounded bg-gray-100 text-gray-600 text-xs font-medium border border-gray-200">
@@ -1616,6 +1622,10 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
                     <div className="bg-gray-50 p-3 rounded-lg">
                       <span className="text-xs text-gray-500 block">Género</span>
                       <span className="font-bold text-gray-800">{viewingProduct.gender || 'N/A'}</span>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <span className="text-xs text-gray-500 block">Talla</span>
+                      <span className="font-bold text-gray-800">{viewingProduct.size || 'N/A'}</span>
                     </div>
                   </div>
                   <div className="flex justify-end pt-2">
@@ -1731,9 +1741,13 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
               </div>
 
               {/* --- SECCIÓN 2: ATRIBUTOS --- */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/20 p-4 rounded-xl border border-white/30">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-white/20 p-4 rounded-xl border border-white/30">
                 <div>
                   <FormInput label="Color" name="color" value={newProduct.color} onChange={handleProductChange} placeholder="Ej. Azul" />
+                </div>
+
+                <div>
+                  <FormInput label="Talla" name="size" value={newProduct.size || ''} onChange={handleProductChange} placeholder="Ej. M, 42, Única" />
                 </div>
 
                 <div>

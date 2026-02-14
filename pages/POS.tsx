@@ -693,7 +693,10 @@ export const POS: React.FC<POSProps> = ({ user }) => {
                   </div>
                   <div className="p-3 flex flex-col flex-1">
                     <h4 className="font-bold text-gray-800 text-sm mb-1 leading-tight line-clamp-2">{product.name}</h4>
-                    <p className="text-[10px] text-gray-500 mb-2 font-mono">{product.sku}</p>
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                      <span className="text-[10px] text-gray-500 font-mono bg-gray-100 px-1 rounded">{product.sku}</span>
+                      {product.size && <span className="text-[9px] font-bold text-gray-600 border border-gray-200 px-1 rounded">{product.size}</span>}
+                    </div>
                     <div className="mt-auto flex items-center justify-between">
                       <span className="font-bold text-brand-primary">${product.price.toFixed(2)}</span>
                       <button
