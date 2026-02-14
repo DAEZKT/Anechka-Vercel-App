@@ -104,9 +104,19 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
             const html5QrCode = new Html5Qrcode(scannerId, false);
             scannerRef.current = html5QrCode;
 
+            const startTime = Date.now();
+
             // Common success handler
             const onSuccess = (decodedText: string) => {
+                // Ignore scans in the first 1.5 seconds to prevent ghost triggers
+                if (Date.now() - startTime < 1500) {
+                    console.log("Ignored early scan:", decodedText);
+                    return;
+                }
+
                 playBeep();
+                // DEBUG: Confirm what was scanned
+                // alert(`Escaneado: ${decodedText}`); 
                 onScan(decodedText);
                 onClose();
             };
