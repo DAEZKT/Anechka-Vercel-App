@@ -72,22 +72,27 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
         let scannerInstance: Html5Qrcode | null = null;
         let isMounted = true;
 
-        const startScanner = async () => {
-            // Wait a bit for modal animation
-            await new Promise(r => setTimeout(r, 400));
+        const initializeScanner = async () => {
+            // 1. Safety delay and DOM readiness
+            await new Promise(r => setTimeout(r, 500));
             if (!isMounted) return;
 
             const scannerId = "html5qr-reader-fullscreen";
             const element = document.getElementById(scannerId);
             if (!element) return;
-            element.innerHTML = ""; // Force clean
+
+            // 2. Clean slate
+            element.innerHTML = "";
 
             try {
+                // 3. Create Instance
                 scannerInstance = new Html5Qrcode(scannerId, false);
                 scannerRef.current = scannerInstance;
 
-                // 1. First Goal: Try HD + AutoFocus
-                const hdConstraints = {
+                // 4. Configuration - One robust attempt
+                // We use ideal constraints. Browser will downgrade if needed.
+                // We do NOT use complex fallback chains to avoid "transition" races.
+                const constraints = {
                     facingMode: "environment",
                     width: { min: 640, ideal: 1280, max: 1920 },
                     height: { min: 480, ideal: 720, max: 1080 },
@@ -108,25 +113,27 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                     onClose();
                 };
 
+                // 5. Start with Transition Recovery
                 try {
-                    await scannerInstance.start(hdConstraints, config, onSuccess, () => { });
-                } catch (hdError) {
-                    console.warn("HD Config failed, trying Basic...", hdError);
+                    await scannerInstance.start(constraints, config, onSuccess, () => { });
+                } catch (startErr: any) {
+                    const msg = startErr?.message || "";
 
-                    if (!isMounted) return;
-
-                    // 2. Fallback: Basic Environment (Loose constraints)
-                    try {
-                        await scannerInstance.start({ facingMode: "environment" }, config, onSuccess, () => { });
-                    } catch (basicError: any) {
-                        // Real failure
-                        throw basicError;
+                    // Specific Handling for "Already under transition"
+                    if (msg.includes("transition")) {
+                        console.warn("Scanner locked. Retrying once...");
+                        await new Promise(r => setTimeout(r, 500));
+                        if (isMounted && scannerInstance) {
+                            await scannerInstance.start(constraints, config, onSuccess, () => { });
+                        }
+                    } else {
+                        throw startErr;
                     }
                 }
 
+                // 6. Post-start setup
                 if (isMounted) {
                     setLoading(false);
-                    // Checking torch safely
                     try {
                         const cap = scannerInstance.getRunningTrackCameraCapabilities();
                         // @ts-ignore
@@ -135,43 +142,31 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                 }
 
             } catch (err: any) {
-                console.error("Critical Scanner Error:", err);
+                console.error("Scanner Lifecycle Error:", err);
                 if (isMounted) {
-                    // Serialize error for debugging 'unknown' cases
-                    let errMsg = err?.message || err?.name || "Error desconocido";
-                    try {
-                        if (errMsg === "Error desconocido") {
-                            errMsg = JSON.stringify(err);
-                        }
-                    } catch (e) { }
-
-                    // Avoid "Permission denied" crashes, just close
-                    if (!errMsg.includes("Permission") && !errMsg.includes("Closing")) {
-                        alert(`No se pudo arrancar la cámara.\nInfo: ${errMsg}`);
+                    const msg = err?.message || "Error desconocido";
+                    // Swallow transition errors that happen during retry - they are quirks, not fatal
+                    if (!msg.includes("transition")) {
+                        alert(`No se pudo iniciar la cámara.\n${msg}`);
                     }
                     onClose();
                 }
             }
         };
 
-        startScanner();
+        initializeScanner();
 
         return () => {
             isMounted = false;
-            // Robust cleanup to prevent crashes
             if (scannerInstance) {
-                // We use a flag to know it's stopping to avoid double-stops
+                // Gentle cleanup
                 try {
-                    scannerInstance.stop().then(() => {
-                        return scannerInstance?.clear();
-                    }).catch((stopErr) => {
-                        // If stop fails, force clear
-                        console.warn("Stop failed", stopErr);
-                        try { scannerInstance?.clear(); } catch (e) { }
-                    });
+                    // @ts-ignore
+                    scannerInstance.clear();
                 } catch (e) {
-                    console.error("Cleanup sync error", e);
+                    // Ignore
                 }
+                scannerRef.current = null;
             }
         };
     }, [isOpen]);
