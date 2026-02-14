@@ -68,58 +68,47 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
     useEffect(() => {
         if (!isOpen) {
-            if (scannerRef.current?.isScanning) {
-                scannerRef.current.stop().then(() => {
-                    scannerRef.current?.clear();
-                }).catch(console.error);
-            }
+            // Cleanup is handled by the return of the previous effect or explicit cleanup below
             return;
         }
 
-        const startScanner = async () => {
-            // Prevent multiple start attempts
-            if (scannerRef.current?.isScanning) return;
+        let isMounted = true;
+        let scannerInstance: Html5Qrcode | null = null;
 
-            setLoading(true);
-            // Wait for DOM to be ready
-            await new Promise(r => setTimeout(r, 200));
+        const cleanupScanner = async () => {
+            if (!scannerInstance) return;
+            try {
+                if (scannerInstance.isScanning) {
+                    await scannerInstance.stop();
+                }
+                await scannerInstance.clear();
+            } catch (error) {
+                console.warn("Error cleaning up scanner:", error);
+            }
+            scannerInstance = null;
+        };
+
+        const startScanner = async () => {
+            // Wait for DOM
+            await new Promise(r => setTimeout(r, 300));
+            if (!isMounted) return;
 
             const scannerId = "html5qr-reader-fullscreen";
-            const element = document.getElementById(scannerId);
-
-            if (!element) {
+            if (!document.getElementById(scannerId)) {
                 console.error("Scanner element not found");
                 return;
             }
 
-            // Cleanup previous instance if exists but not scanning
-            if (scannerRef.current) {
-                try {
-                    await scannerRef.current.clear();
-                } catch (e) {
-                    // Ignore clear errors
-                }
+            // Create instance
+            try {
+                scannerInstance = new Html5Qrcode(scannerId, false);
+                scannerRef.current = scannerInstance;
+            } catch (e) {
+                // If "code already used", it means we didn't cleanup properly previous time. 
+                // We can't really recover easily without a hard reload or robust cleanup.
+                console.error("Failed to create Html5Qrcode instance", e);
+                return;
             }
-
-            const html5QrCode = new Html5Qrcode(scannerId, false);
-            scannerRef.current = html5QrCode;
-
-            const startTime = Date.now();
-
-            // Common success handler
-            const onSuccess = (decodedText: string) => {
-                // Ignore scans in the first 1.5 seconds to prevent ghost triggers
-                if (Date.now() - startTime < 1500) {
-                    console.log("Ignored early scan:", decodedText);
-                    return;
-                }
-
-                playBeep();
-                // DEBUG: Confirm what was scanned
-                // alert(`Escaneado: ${decodedText}`); 
-                onScan(decodedText);
-                onClose();
-            };
 
             const qrConfig = {
                 fps: 20,
@@ -128,74 +117,72 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                 disableFlip: false
             };
 
-            // Strategy: Try configs sequentially
-            try {
-                // 1. High Res
-                await html5QrCode.start(
-                    { facingMode: "environment", width: { min: 640, ideal: 1280, max: 1920 }, height: { min: 480, ideal: 720, max: 1080 } },
-                    qrConfig, onSuccess, () => { }
-                );
-            } catch (err1) {
-                console.warn("High-res failed, retrying standard...", err1);
+            const startTime = Date.now();
+            const onSuccess = (decodedText: string) => {
+                if (!isMounted) return;
 
+                // Debounce scans (ignore first 1.5s)
+                if (Date.now() - startTime < 1500) return;
+
+                playBeep();
+                onScan(decodedText);
+                onClose();
+            };
+
+            // Attempt sequence
+            const tryStart = async (config: any) => {
+                if (!scannerInstance) return false;
                 try {
-                    // 2. Standard Environment
-                    await html5QrCode.start(
-                        { facingMode: "environment" },
-                        qrConfig, onSuccess, () => { }
-                    );
-                } catch (err2) {
-                    console.warn("Standard env failed, retrying generic...", err2);
-
-                    try {
-                        // 3. Fallback User/Any
-                        await html5QrCode.start(
-                            { facingMode: "user" },
-                            qrConfig, onSuccess, () => { }
-                        );
-                    } catch (err3: any) {
-                        console.error("All camera attempts failed", err3);
-
-                        // Construct a helpful error message
-                        let errorMsg = err3?.message || "Error desconocido";
-
-                        if (errorMsg.includes("Permission")) {
-                            errorMsg = "Permiso de cámara denegado. Revise la configuración de su navegador.";
-                        } else if (errorMsg.includes("NotFound")) {
-                            errorMsg = "No se encontró ninguna cámara en el dispositivo.";
-                        } else if (errorMsg.includes("InsecureContext")) {
-                            errorMsg = "El escáner requiere conexión segura (HTTPS).";
-                        }
-
-                        // Serialize error to see all fields
+                    await scannerInstance.start(config, qrConfig, onSuccess, () => { });
+                    return true;
+                } catch (err: any) {
+                    const msg = err?.message || "";
+                    if (msg.includes("transition")) {
+                        // Critical race condition: wait and retry once
+                        await new Promise(r => setTimeout(r, 500));
                         try {
-                            const errorString = JSON.stringify(err3, Object.getOwnPropertyNames(err3));
-                            if (errorString !== "{}") errorMsg += `\nRaw: ${errorString}`;
-                            else errorMsg += `\nString: ${String(err3)}`;
-                        } catch (e) {
-                            errorMsg += `\nOriginal: ${String(err3)}`;
+                            await scannerInstance.start(config, qrConfig, onSuccess, () => { });
+                            return true;
+                        } catch (retryErr) {
+                            return false;
                         }
-
-                        // Don't alert "already under transition" if it's just a retry fail
-                        if (!errorMsg.includes("transition")) {
-                            alert(`No se pudo iniciar la cámara.\n\n${errorMsg}`);
-                        }
-                        onClose();
-                        return;
                     }
+                    return false;
                 }
+            };
+
+            setLoading(true);
+
+            // 1. Try High Res
+            let success = await tryStart({ facingMode: "environment", width: { min: 640, ideal: 1280, max: 1920 }, height: { min: 480, ideal: 720, max: 1080 } });
+
+            // 2. Try Standard if failed
+            if (!success && isMounted) {
+                console.warn("Retrying with standard config...");
+                success = await tryStart({ facingMode: "environment" });
             }
 
-            setLoading(false);
-            setHasTorch(true);
+            // 3. Try User/Any if failed
+            if (!success && isMounted) {
+                console.warn("Retrying with any camera...");
+                success = await tryStart({ facingMode: "user" });
+            }
+
+            if (!success && isMounted) {
+                // Final error reporting
+                alert("No se pudo iniciar la cámara. Verifique permisos HTTPS o que la cámara no esté en uso por otra app.");
+                onClose();
+            } else if (isMounted) {
+                setLoading(false);
+                setHasTorch(true);
+            }
         };
 
         startScanner();
 
         return () => {
-            if (scannerRef.current?.isScanning) {
-                scannerRef.current.stop().then(() => scannerRef.current?.clear()).catch(console.error);
-            }
+            isMounted = false;
+            cleanupScanner();
         };
     }, [isOpen]);
 
