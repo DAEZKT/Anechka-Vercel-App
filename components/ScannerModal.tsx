@@ -88,18 +88,24 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                 scannerInstance = new Html5Qrcode(scannerId, false);
                 scannerRef.current = scannerInstance;
 
-                // PREVIOUS CONFIG WAS TOO AGGRESSIVE. 
-                // We use standard config now for maximum compatibility.
+                // Better Config: Try to ask for HD resolution and AutoFocus
                 const config = {
-                    fps: 10, // Lower FPS = Better focus on generic phones
+                    fps: 15,
                     qrbox: { width: 250, height: 250 },
                     aspectRatio: 1.0,
                     disableFlip: false
                 };
 
-                // Simple start - NO width/height constraints causing crashes
+                const cameraConstraints = {
+                    facingMode: "environment",
+                    // Ideal constraints (browser tries to match, doesn't fail if not exact)
+                    width: { min: 640, ideal: 1280, max: 1920 },
+                    height: { min: 480, ideal: 720, max: 1080 },
+                    focusMode: "continuous"
+                };
+
                 await scannerInstance.start(
-                    { facingMode: "environment" },
+                    cameraConstraints,
                     config,
                     (decodedText) => {
                         if (!isMounted) return;
@@ -107,18 +113,29 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                         onScan(decodedText);
                         onClose();
                     },
-                    () => { } // Ignore frame errors
+                    () => { }
                 );
 
                 if (isMounted) {
                     setLoading(false);
-                    setHasTorch(true);
+                    // Check torch support silently
+                    try {
+                        const capabilities = scannerInstance.getRunningTrackCameraCapabilities();
+                        // @ts-ignore - capability checking varies by version
+                        setHasTorch(!!capabilities?.torchFeature?.isSupported?.() || !!capabilities?.torch);
+                    } catch (e) {
+                        setHasTorch(false);
+                    }
                 }
 
             } catch (err: any) {
                 console.error("Scanner Error", err);
                 if (isMounted) {
-                    alert(`Error de cámara: ${err?.message || "No se pudo iniciar"}`);
+                    // Only alert if it's a real failure, not just a permission denial causing unmout
+                    const msg = err?.message || "Error desconocido";
+                    if (!msg.includes("Permission")) {
+                        alert(`No se pudo iniciar la cámara: ${msg}`);
+                    }
                     onClose();
                 }
             }
@@ -129,11 +146,11 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
         return () => {
             isMounted = false;
             if (scannerInstance) {
-                // Best effort cleanup
                 scannerInstance.stop().then(() => {
                     return scannerInstance?.clear();
                 }).catch(() => {
-                    // Ignore stop/clear errors during unmount
+                    // Ignore stop errors
+                    try { scannerInstance?.clear(); } catch (e) { }
                 });
             }
         };
