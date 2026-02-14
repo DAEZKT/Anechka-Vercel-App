@@ -19,7 +19,26 @@ import { hasPermission } from './utils/permissions';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [currentPage, setCurrentPage] = useState('dashboard');
+
+  // Initialize state based on URL to allow direct sharing
+  const [currentPage, setCurrentPage] = useState(() => {
+    const path = window.location.pathname;
+    if (path === '/catalogo' || path === '/catalog') return 'public-catalog';
+    return 'dashboard';
+  });
+
+  // Sync browser URL with state (Basic client-side routing)
+  React.useEffect(() => {
+    if (currentPage === 'public-catalog') {
+      window.history.pushState(null, '', '/catalogo');
+    } else {
+      // For internal pages, we might want to stay on root or /app
+      // keep it simple for now to avoid conflicts
+      if (window.location.pathname === '/catalogo') {
+        window.history.pushState(null, '', '/');
+      }
+    }
+  }, [currentPage]);
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
