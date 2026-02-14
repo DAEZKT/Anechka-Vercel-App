@@ -77,70 +77,98 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
         }
 
         const startScanner = async () => {
+            // Prevent multiple start attempts
+            if (scannerRef.current?.isScanning) return;
+
             setLoading(true);
-            // Wait for DOM
+            // Wait for DOM to be ready
             await new Promise(r => setTimeout(r, 200));
 
             const scannerId = "html5qr-reader-fullscreen";
-
-            // Ensure element exists
             const element = document.getElementById(scannerId);
+
             if (!element) {
                 console.error("Scanner element not found");
                 return;
             }
 
-            try {
-                // Initialize
-                // Use verbose=false
-                const html5QrCode = new Html5Qrcode(scannerId, false);
-                scannerRef.current = html5QrCode;
-
-                // High Resolution Config
-                const cameraConfig = {
-                    facingMode: "environment",
-                    // Request high resolution for better clarity
-                    width: { min: 640, ideal: 1920, max: 3840 },
-                    height: { min: 480, ideal: 1080, max: 2160 },
-                    focusMode: "continuous" // Try to enforce auto-focus
-                };
-
-                const qrConfig = {
-                    fps: 25, // Higher frame rate
-                    qrbox: { width: 250, height: 250 }, // The scanning box size
-                    aspectRatio: window.innerWidth / window.innerHeight, // Full screen match
-                    disableFlip: false
-                };
-
-                await html5QrCode.start(
-                    cameraConfig,
-                    qrConfig,
-                    (decodedText) => {
-                        // Debounce or just close?
-                        // Play sound
-                        playBeep();
-
-                        // Close immediately
-                        onScan(decodedText);
-                        onClose();
-                    },
-                    (errorMessage) => {
-                        // ignore errors
-                    }
-                );
-
-                setLoading(false);
-
-                // Detect Torch Capability loosely
-                // We'll just show the button and let it fail gracefully if not supported
-                // driven by the fact that checking capabilities is hard without direct stream access
-                setHasTorch(true);
-
-            } catch (err) {
-                console.error("Error starting scanner", err);
-                alert("No se pudo iniciar la cámara. Verifique permisos y asegúrese de estar en HTTPS.");
-                onClose();
+            // Cleanup previous instance if exists but not scanning
+            if (scannerRef.current) {
+                try {
+                    await scannerRef.current.clear();
+                } catch (e) {
+                    // Ignore clear errors
+                }
             }
+
+            const html5QrCode = new Html5Qrcode(scannerId, false);
+            scannerRef.current = html5QrCode;
+
+            // Common success handler
+            const onSuccess = (decodedText: string) => {
+                playBeep();
+                onScan(decodedText);
+                onClose();
+            };
+
+            const qrConfig = {
+                fps: 20,
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0,
+                disableFlip: false
+            };
+
+            // Strategy: Try configs sequentially
+            try {
+                // 1. High Res
+                await html5QrCode.start(
+                    { facingMode: "environment", width: { min: 640, ideal: 1280, max: 1920 }, height: { min: 480, ideal: 720, max: 1080 } },
+                    qrConfig, onSuccess, () => { }
+                );
+            } catch (err1) {
+                console.warn("High-res failed, retrying standard...", err1);
+
+                try {
+                    // 2. Standard Environment
+                    await html5QrCode.start(
+                        { facingMode: "environment" },
+                        qrConfig, onSuccess, () => { }
+                    );
+                } catch (err2) {
+                    console.warn("Standard env failed, retrying generic...", err2);
+
+                    try {
+                        // 3. Fallback User/Any
+                        await html5QrCode.start(
+                            { facingMode: "user" },
+                            qrConfig, onSuccess, () => { }
+                        );
+                    } catch (err3: any) {
+                        console.error("All camera attempts failed", err3);
+
+                        // Construct a helpful error message
+                        let errorMsg = err3?.message || "Error desconocido";
+
+                        if (errorMsg.includes("Permission")) {
+                            errorMsg = "Permiso de cámara denegado. Revise la configuración de su navegador.";
+                        } else if (errorMsg.includes("NotFound")) {
+                            errorMsg = "No se encontró ninguna cámara en el dispositivo.";
+                        } else if (errorMsg.includes("InsecureContext")) {
+                            errorMsg = "El escáner requiere conexión segura (HTTPS).";
+                        }
+
+                        // Don't alert "already under transition" if it's just a retry fail
+                        if (!errorMsg.includes("transition")) {
+                            alert(`No se pudo iniciar la cámara.\n\n${errorMsg}`);
+                        }
+                        onClose();
+                        return;
+                    }
+                }
+            }
+
+            setLoading(false);
+            setHasTorch(true);
         };
 
         startScanner();
