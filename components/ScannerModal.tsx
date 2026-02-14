@@ -92,18 +92,17 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                 // 4. Configuration - One robust attempt
                 // We use ideal constraints. Browser will downgrade if needed.
                 // We do NOT use complex fallback chains to avoid "transition" races.
-                const constraints = {
-                    facingMode: "environment",
-                    width: { min: 640, ideal: 1280, max: 1920 },
-                    height: { min: 480, ideal: 720, max: 1080 },
-                    focusMode: "continuous"
-                };
-
                 const config = {
                     fps: 15,
                     qrbox: { width: 250, height: 250 },
                     aspectRatio: 1.0,
-                    disableFlip: false
+                    disableFlip: false,
+                    videoConstraints: {
+                        width: { min: 640, ideal: 1280, max: 1920 },
+                        height: { min: 480, ideal: 720, max: 1080 },
+                        // @ts-ignore - focusMode is widely supported but not in standard TS defs
+                        focusMode: 'continuous'
+                    }
                 };
 
                 const onSuccess = (text: string) => {
@@ -115,7 +114,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
                 // 5. Start with Transition Recovery
                 try {
-                    await scannerInstance.start(constraints, config, onSuccess, () => { });
+                    // First arg must be EXACTLY { facingMode: "environment" } or a cameraId string
+                    await scannerInstance.start({ facingMode: "environment" }, config, onSuccess, () => { });
                 } catch (startErr: any) {
                     const msg = startErr?.message || "";
 
@@ -124,7 +124,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                         console.warn("Scanner locked. Retrying once...");
                         await new Promise(r => setTimeout(r, 500));
                         if (isMounted && scannerInstance) {
-                            await scannerInstance.start(constraints, config, onSuccess, () => { });
+                            await scannerInstance.start({ facingMode: "environment" }, config, onSuccess, () => { });
                         }
                     } else {
                         throw startErr;
