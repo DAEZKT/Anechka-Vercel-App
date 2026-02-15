@@ -46,6 +46,7 @@ export const SalesPage = () => {
    const [saleDetails, setSaleDetails] = useState<SaleDetail[]>([]);
    const [isEditing, setIsEditing] = useState(false);
    const [editCustomerId, setEditCustomerId] = useState('');
+   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
 
    // Filter State
    const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -650,19 +651,20 @@ export const SalesPage = () => {
                      <div className="flex justify-between items-center text-sm mb-3">
                         <span className="text-gray-500">Cliente</span>
                         {isEditing ? (
-                           <div className="flex gap-2">
-                              <select
+                           <div className="flex flex-col gap-2 w-full animate-fade-in">
+                              <CustomDropdown
+                                 label="-- Seleccionar Cliente --"
                                  value={editCustomerId}
-                                 onChange={e => setEditCustomerId(e.target.value)}
-                                 className="border rounded px-2 py-1 text-xs"
-                              >
-                                 <option value="">Seleccionar Cliente</option>
-                                 {customers.map(c => (
-                                    <option key={c.id} value={c.id}>{c.full_name}</option>
-                                 ))}
-                              </select>
-                              <button onClick={handleUpdateCustomer} className="text-green-600 font-bold text-xs">Guardar</button>
-                              <button onClick={() => setIsEditing(false)} className="text-red-400 text-xs">Cancelar</button>
+                                 options={customers.map(c => ({ value: c.id, label: c.name }))}
+                                 isOpen={isCustomerDropdownOpen}
+                                 onToggle={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                                 onSelect={(val) => { setEditCustomerId(val); setIsCustomerDropdownOpen(false); }}
+                                 direction="up"
+                              />
+                              <div className="flex justify-end gap-2 mt-1">
+                                 <button onClick={() => setIsEditing(false)} className="px-3 py-1.5 text-gray-500 hover:text-gray-700 text-xs font-bold bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">Cancelar</button>
+                                 <button onClick={handleUpdateCustomer} className="px-3 py-1.5 text-white bg-green-500 hover:bg-green-600 rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1">Guardar</button>
+                              </div>
                            </div>
                         ) : (
                            <div className="flex items-center gap-2">
@@ -709,6 +711,103 @@ export const SalesPage = () => {
                   </div>
                </GlassCard>
             </div>
+         )}
+      </div>
+   );
+};
+
+// --- CUSTOM DROPDOWN COMPONENT (Adapted from POS) ---
+interface CustomDropdownProps {
+   label: string;
+   value: string;
+   options: { value: string; label: string }[];
+   isOpen: boolean;
+   onToggle: () => void;
+   onSelect: (val: string) => void;
+   direction?: 'up' | 'down';
+}
+
+const CustomDropdown: React.FC<CustomDropdownProps> = ({
+   label,
+   value,
+   options,
+   isOpen,
+   onToggle,
+   onSelect,
+   direction = 'down'
+}) => {
+   const selectedOption = options.find(o => o.value === value);
+   const displayLabel = selectedOption ? selectedOption.label : label;
+   const isActive = !!value;
+
+   return (
+      <div className="relative w-full">
+         <button
+            onClick={onToggle}
+            className={`
+               w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition-all shadow-sm border
+               ${isActive || isOpen
+                  ? 'bg-white border-brand-primary ring-2 ring-brand-primary/20 text-brand-primary'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+               }
+            `}
+         >
+            <span className="truncate mr-2">{displayLabel}</span>
+            <svg
+               xmlns="http://www.w3.org/2000/svg"
+               width="16"
+               height="16"
+               viewBox="0 0 24 24"
+               fill="none"
+               stroke="currentColor"
+               strokeWidth="2"
+               strokeLinecap="round"
+               strokeLinejoin="round"
+               className={`transition-transform duration-200 text-gray-400 ${isOpen ? 'rotate-180 text-brand-primary' : ''}`}
+            >
+               <path d="m6 9 6 6 6-6" />
+            </svg>
+         </button>
+
+         {/* Dropdown Menu */}
+         {isOpen && (
+            <>
+               <div className="fixed inset-0 z-40" onClick={onToggle} />
+               <div
+                  className={`
+                     absolute left-0 w-full bg-white border border-gray-100 rounded-xl shadow-xl p-1 animate-fade-in z-50 overflow-hidden
+                     ${direction === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}
+                  `}
+                  style={{ maxHeight: '240px' }}
+               >
+                  <div className="overflow-y-auto max-h-[230px] scrollbar-thin">
+                     <button
+                        onClick={() => onSelect('')}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors mb-1 ${!value ? 'bg-brand-primary/10 text-brand-primary' : 'hover:bg-gray-100 text-gray-500'}`}
+                     >
+                        -- Seleccionar Cliente --
+                     </button>
+                     {options.map(opt => (
+                        <button
+                           key={opt.value}
+                           onClick={() => onSelect(opt.value)}
+                           className={`
+                              w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex justify-between items-center
+                              ${value === opt.value
+                                 ? 'bg-brand-primary text-white font-bold'
+                                 : 'text-gray-700 hover:bg-violet-50 hover:text-brand-primary'
+                              }
+                           `}
+                        >
+                           <span className="truncate">{opt.label}</span>
+                           {value === opt.value && (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                           )}
+                        </button>
+                     ))}
+                  </div>
+               </div>
+            </>
          )}
       </div>
    );

@@ -17,6 +17,7 @@ export const UsersPage = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [passwordResetUser, setPasswordResetUser] = useState<User | null>(null);
   const [viewPermissionsUser, setViewPermissionsUser] = useState<User | null>(null);
+  const [activeMenuUserId, setActiveMenuUserId] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -195,33 +196,56 @@ export const UsersPage = () => {
                         {u.is_active ? 'ACTIVO' : 'INACTIVO'}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => setPasswordResetUser(u)}
-                          className="text-amber-500 hover:text-amber-700 p-2 hover:bg-amber-50 rounded transition-colors"
-                          title="Restablecer Contraseña"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" /></svg>
-                        </button>
+                    <td className="py-3 px-4 text-right relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuUserId(activeMenuUserId === u.id ? null : u.id);
+                        }}
+                        className={`p-2 rounded-full transition-colors ${activeMenuUserId === u.id ? 'bg-brand-primary text-white' : 'text-gray-400 hover:text-brand-primary hover:bg-gray-100'}`}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" /></svg>
+                      </button>
 
-                        <button
-                          onClick={() => handleEdit(u)}
-                          className="text-blue-500 hover:text-blue-700 p-2 hover:bg-blue-50 rounded transition-colors"
-                          title="Editar Datos"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
-                        </button>
+                      {/* Dropdown Menu */}
+                      {activeMenuUserId === u.id && (
+                        <>
+                          <div className="fixed inset-0 z-40 cursor-default" onClick={() => setActiveMenuUserId(null)} />
+                          <div className="absolute right-8 top-8 z-50 bg-white/95 backdrop-blur-xl shadow-2xl rounded-xl border border-white/50 p-1.5 min-w-[200px] flex flex-col gap-1 animate-fade-in text-left">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setPasswordResetUser(u); setActiveMenuUserId(null); }}
+                              className="flex items-center gap-3 px-3 py-2.5 hover:bg-amber-50 text-gray-600 hover:text-amber-600 rounded-lg transition-colors text-xs font-bold"
+                            >
+                              <div className="p-1.5 bg-amber-100 rounded-md text-amber-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" /></svg>
+                              </div>
+                              Cambiar Contraseña
+                            </button>
 
-                        {/* Toggle Active/Inactive Button */}
-                        <button
-                          onClick={() => handleToggleStatus(u)}
-                          className={`p-2 rounded transition-colors ${u.is_active ? 'text-red-400 hover:text-red-600 hover:bg-red-50' : 'text-green-500 hover:text-green-700 hover:bg-green-50'}`}
-                          title={u.is_active ? "Desactivar Acceso" : "Reactivar Acceso"}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" x2="12" y1="2" y2="12" /></svg>
-                        </button>
-                      </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleEdit(u); setActiveMenuUserId(null); }}
+                              className="flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 text-gray-600 hover:text-blue-600 rounded-lg transition-colors text-xs font-bold"
+                            >
+                              <div className="p-1.5 bg-blue-100 rounded-md text-blue-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
+                              </div>
+                              Editar Usuario
+                            </button>
+
+                            <div className="h-px bg-gray-100 my-1 mx-2"></div>
+
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleToggleStatus(u); setActiveMenuUserId(null); }}
+                              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-xs font-bold ${u.is_active ? 'hover:bg-red-50 text-gray-600 hover:text-red-500' : 'hover:bg-green-50 text-gray-600 hover:text-green-600'}`}
+                            >
+                              <div className={`p-1.5 rounded-md ${u.is_active ? 'bg-red-100 text-red-500' : 'bg-green-100 text-green-500'}`}>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" x2="12" y1="2" y2="12" /></svg>
+                              </div>
+                              {u.is_active ? 'Desactivar Acceso' : 'Reactivar Acceso'}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))

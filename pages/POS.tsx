@@ -775,23 +775,32 @@ export const POS: React.FC<POSProps> = ({ user }) => {
                       className="w-full px-3 py-2 bg-white/60 border border-gray-200 rounded-lg focus:outline-none focus:border-brand-primary text-sm"
                     />
                     {/* Autocomplete Dropdown */}
-                    {showCustomerResults && customerSearchTerm && !selectedCustomer && (
-                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto z-30">
-                        {filteredCustomers.length > 0 ? (
-                          filteredCustomers.map(c => (
-                            <div
-                              key={c.id}
-                              onClick={() => handleSelectCustomer(c)}
-                              className="px-4 py-2 hover:bg-violet-50 cursor-pointer text-sm border-b border-gray-50 last:border-0"
-                            >
-                              <div className="font-bold text-gray-800">{c.name}</div>
-                              <div className="text-xs text-gray-500">NIT: {c.nit}</div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="px-4 py-3 text-xs text-gray-500 italic">No encontrado. Use (+) para crear.</div>
-                        )}
-                      </div>
+                    {showCustomerResults && !selectedCustomer && (
+                      <>
+                        {/* Overlay to close on click outside */}
+                        <div className="fixed inset-0 z-20" onClick={() => setShowCustomerResults(false)} />
+
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl border border-gray-100 rounded-xl shadow-2xl p-1 animate-fade-in-down z-30 overflow-hidden">
+                          <div className="max-h-60 overflow-y-auto scrollbar-thin">
+                            {filteredCustomers.length > 0 ? (
+                              filteredCustomers.map(c => (
+                                <div
+                                  key={c.id}
+                                  onClick={() => handleSelectCustomer(c)}
+                                  className="w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors flex flex-col cursor-pointer group hover:bg-violet-50"
+                                >
+                                  <div className="font-bold text-gray-700 group-hover:text-brand-primary transition-colors">{c.name}</div>
+                                  <div className="text-xs text-gray-400 group-hover:text-violet-400 font-mono">Tel: {c.phone || 'S/T'}</div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="px-4 py-3 text-xs text-gray-500 italic text-center">
+                                No encontrado. Use (+) para crear.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
                     )}
                   </div>
 
@@ -804,7 +813,7 @@ export const POS: React.FC<POSProps> = ({ user }) => {
                   </button>
                 </div>
                 {selectedCustomer && (
-                  <div className="text-[10px] text-gray-500 mt-1 ml-1">NIT: {selectedCustomer.nit}</div>
+                  <div className="text-[10px] text-gray-500 mt-1 ml-1">Tel: {selectedCustomer.phone || 'S/T'}</div>
                 )}
               </div>
             </div>

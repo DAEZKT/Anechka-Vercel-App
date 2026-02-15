@@ -17,6 +17,7 @@ export const AdminPage = () => {
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<PaymentMethodType>('CARD');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [activeMenuMethodId, setActiveMenuMethodId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -196,23 +197,57 @@ export const AdminPage = () => {
                           {method.is_active ? 'ACTIVO' : 'INACTIVO'}
                         </button>
                       </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleEdit(method)}
-                            className="text-blue-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded"
-                            title="Editar"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
-                          </button>
-                          <button
-                            onClick={() => handleDelete(method.id)}
-                            className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded"
-                            title="Eliminar"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
-                          </button>
-                        </div>
+                      <td className="py-3 px-4 text-right relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveMenuMethodId(activeMenuMethodId === method.id ? null : method.id);
+                          }}
+                          className={`p-2 rounded-full transition-colors ${activeMenuMethodId === method.id ? 'bg-brand-primary text-white' : 'text-gray-400 hover:text-brand-primary hover:bg-gray-100'}`}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" /></svg>
+                        </button>
+
+                        {/* Dropdown Menu */}
+                        {activeMenuMethodId === method.id && (
+                          <>
+                            <div className="fixed inset-0 z-40 cursor-default" onClick={() => setActiveMenuMethodId(null)} />
+                            <div className="absolute right-8 top-8 z-50 bg-white/95 backdrop-blur-xl shadow-2xl rounded-xl border border-white/50 p-1.5 min-w-[200px] flex flex-col gap-1 animate-fade-in text-left">
+
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleEdit(method); setActiveMenuMethodId(null); }}
+                                className="flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 text-gray-600 hover:text-blue-600 rounded-lg transition-colors text-xs font-bold"
+                              >
+                                <div className="p-1.5 bg-blue-100 rounded-md text-blue-600">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
+                                </div>
+                                Editar Método
+                              </button>
+
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleToggle(method.id); setActiveMenuMethodId(null); }}
+                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-xs font-bold ${method.is_active ? 'hover:bg-red-50 text-gray-600 hover:text-red-500' : 'hover:bg-green-50 text-gray-600 hover:text-green-500'}`}
+                              >
+                                <div className={`p-1.5 rounded-md ${method.is_active ? 'bg-red-100 text-red-500' : 'bg-green-100 text-green-500'}`}>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" x2="12" y1="2" y2="12" /></svg>
+                                </div>
+                                {method.is_active ? 'Desactivar' : 'Activar'}
+                              </button>
+
+                              <div className="h-px bg-gray-100 my-1 mx-2"></div>
+
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDelete(method.id); setActiveMenuMethodId(null); }}
+                                className="flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 text-gray-600 hover:text-red-500 rounded-lg transition-colors text-xs font-bold"
+                              >
+                                <div className="p-1.5 bg-red-100 rounded-md text-red-500">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </div>
+                                Eliminar
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
