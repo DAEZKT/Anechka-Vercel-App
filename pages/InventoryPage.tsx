@@ -178,12 +178,9 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
     setBrands(brnds);
 
     // Calculate Total Investment (Cost * Stock)
-    const investmentPromises = prods.map(async (p) => {
-      const lastCost = await inventoryService.getLastProductCost(p.id);
-      return lastCost * p.stock_level;
-    });
-    const investmentResults = await Promise.all(investmentPromises);
-    const totalInv = investmentResults.reduce((sum, val) => sum + val, 0);
+    // Calculate Total Investment (Cost * Stock) using the fetched products directly
+    // This avoids N+1 API calls and ensures consistency with the displayed stock
+    const totalInv = prods.reduce((sum, p) => sum + (p.cost * p.stock_level), 0);
     setTotalInvestment(totalInv);
 
     if (currentView === 'KARDEX') {

@@ -761,6 +761,11 @@ export const supplierService = {
   update: async (id: string, updates: Partial<Supplier>): Promise<{ success: boolean }> => {
     const { error } = await supabase.from('suppliers').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
     return { success: !error };
+  },
+
+  delete: async (id: string): Promise<{ success: boolean }> => {
+    const { error } = await supabase.from('suppliers').delete().eq('id', id);
+    return { success: !error };
   }
 };
 

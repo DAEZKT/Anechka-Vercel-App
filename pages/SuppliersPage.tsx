@@ -28,6 +28,7 @@ export const SuppliersPage: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [activeMenuSupplierId, setActiveMenuSupplierId] = useState<string | null>(null);
 
     // Form State
     const initialForm = {
@@ -75,6 +76,22 @@ export const SuppliersPage: React.FC = () => {
         });
         setEditingId(sup.id);
         setShowModal(true);
+    };
+
+    const handleDelete = async (id: string, name: string) => {
+        if (confirm(`¿Eliminar proveedor "${name}"?`)) {
+            try {
+                const result = await supplierService.delete(id);
+                if (result.success) {
+                    loadSuppliers();
+                } else {
+                    alert("No se pudo eliminar el proveedor");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Error al eliminar");
+            }
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -134,77 +151,114 @@ export const SuppliersPage: React.FC = () => {
                 />
             </GlassCard>
 
-            {/* Contact List View - Replaces Grid */}
-            <div className="space-y-3">
+            {/* Compact Supplier List View */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {filteredSuppliers.map(sup => (
-                    <div key={sup.id} className="group relative bg-white/70 backdrop-blur-md rounded-2xl p-5 border border-white/50 shadow-sm hover:shadow-md transition-all duration-300">
-                        <div className="flex flex-col sm:flex-row gap-5">
-
-                            {/* Avatar & Main Info */}
-                            <div className="flex items-start gap-4 min-w-[30%]">
-                                <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl shrink-0 ${getAvatarColor(sup.name)} flex items-center justify-center text-white text-lg font-bold shadow-md group-hover:scale-105 transition-transform`}>
-                                    {getInitials(sup.name)}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="font-bold text-gray-800 text-lg leading-tight truncate pr-2">{sup.name}</h3>
-                                    {sup.contact_name ? (
-                                        <div className="flex items-center gap-1.5 mt-1">
-                                            <span className={`w-1.5 h-1.5 rounded-full ${getAvatarColor(sup.name)}`}></span>
-                                            <span className="text-sm font-medium text-gray-500 truncate">{sup.contact_name}</span>
-                                        </div>
-                                    ) : (
-                                        <span className="text-xs text-gray-400 italic mt-1 block">Sin contacto principal</span>
-                                    )}
-                                </div>
+                    <div key={sup.id} className={`group relative bg-white/80 hover:bg-white backdrop-blur-md rounded-xl p-3 border border-gray-100 hover:border-brand-primary/30 shadow-sm hover:shadow-lg transition-all duration-300 ${activeMenuSupplierId === sup.id ? 'z-30' : ''}`}>
+                        <div className="flex items-start gap-3">
+                            {/* Avatar */}
+                            <div className={`w-10 h-10 rounded-lg shrink-0 ${getAvatarColor(sup.name)} flex items-center justify-center text-white text-sm font-bold shadow-sm group-hover:scale-105 transition-transform mt-1`}>
+                                {getInitials(sup.name)}
                             </div>
 
-                            {/* Details & Info Chips */}
-                            <div className="flex-1 flex flex-col justify-center gap-3">
-                                <div className="flex flex-wrap gap-2">
-                                    {sup.phone ? (
-                                        <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700 bg-gray-100/80 px-2.5 py-1.5 rounded-lg border border-gray-200">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
-                                            {sup.phone}
-                                        </div>
-                                    ) : (
-                                        <div className="inline-flex items-center gap-1.5 text-xs text-gray-400 bg-gray-50/50 px-2.5 py-1.5 rounded-lg border border-gray-100 italic">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
-                                            -
-                                        </div>
-                                    )}
+                            {/* Main Info */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start">
+                                    <h3 className="font-bold text-gray-800 text-sm leading-tight truncate pr-6 transition-colors group-hover:text-brand-primary">{sup.name}</h3>
 
-                                    {sup.email ? (
-                                        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700 bg-gray-100/80 px-2.5 py-1.5 rounded-lg border border-gray-200">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
-                                            <span className="truncate max-w-[140px]">{sup.email}</span>
-                                        </div>
-                                    ) : null}
-                                </div>
+                                    {/* Kebab Menu Trigger - Absolute Positioned */}
+                                    <div className="absolute top-2 right-2">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setActiveMenuSupplierId(activeMenuSupplierId === sup.id ? null : sup.id);
+                                            }}
+                                            className={`p-1.5 rounded-full transition-colors ${activeMenuSupplierId === sup.id ? 'bg-brand-primary text-white' : 'text-gray-400 hover:text-brand-primary hover:bg-gray-50'}`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" /></svg>
+                                        </button>
 
-                                <div className="flex flex-wrap gap-2">
-                                    <div className={`inline-flex items-center gap-1.5 text-[10px] font-mono font-medium px-2 py-1 rounded-md border ${sup.tax_id ? 'bg-white text-gray-600 border-gray-200' : 'bg-gray-50 text-gray-400 border-transparent'}`}>
-                                        <span className="uppercase text-gray-300 font-bold">NIT</span>
-                                        {sup.tax_id || '-'}
+                                        {/* Dropdown Menu */}
+                                        {activeMenuSupplierId === sup.id && (
+                                            <>
+                                                <div className="fixed inset-0 z-40 cursor-default" onClick={() => setActiveMenuSupplierId(null)} />
+                                                <div className="absolute right-0 top-full mt-1 z-50 bg-white/95 backdrop-blur-xl shadow-xl rounded-lg border border-gray-100 p-1 min-w-[160px] flex flex-col gap-0.5 animate-fade-in text-left origin-top-right">
+
+                                                    {sup.phone && (
+                                                        <a
+                                                            href={`tel:${sup.phone}`}
+                                                            onClick={() => setActiveMenuSupplierId(null)}
+                                                            className="flex items-center gap-2 px-3 py-2 hover:bg-green-50 text-gray-600 hover:text-green-600 rounded-md transition-colors text-xs font-medium"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
+                                                            Llamar
+                                                        </a>
+                                                    )}
+
+                                                    {sup.email && (
+                                                        <a
+                                                            href={`mailto:${sup.email}`}
+                                                            onClick={() => setActiveMenuSupplierId(null)}
+                                                            className="flex items-center gap-2 px-3 py-2 hover:bg-blue-50 text-gray-600 hover:text-blue-600 rounded-md transition-colors text-xs font-medium"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
+                                                            Email
+                                                        </a>
+                                                    )}
+
+                                                    {(sup.phone || sup.email) && <div className="h-px bg-gray-100 my-1 mx-2"></div>}
+
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleOpenEdit(sup); setActiveMenuSupplierId(null); }}
+                                                        className="flex items-center gap-2 px-3 py-2 hover:bg-brand-primary/10 text-gray-600 hover:text-brand-primary rounded-md transition-colors text-xs font-medium"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
+                                                        Editar
+                                                    </button>
+
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleDelete(sup.id, sup.name); setActiveMenuSupplierId(null); }}
+                                                        className="flex items-center gap-2 px-3 py-2 hover:bg-red-50 text-gray-600 hover:text-red-500 rounded-md transition-colors text-xs font-medium"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                                        Eliminar
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Actions Toolbar */}
-                            <div className="flex sm:flex-col items-center justify-end gap-2 border-t sm:border-t-0 sm:border-l border-gray-100 pt-3 sm:pt-0 sm:pl-3 mt-1 sm:mt-0 w-full sm:w-auto">
-                                <div className="flex gap-2 w-full sm:w-auto justify-end">
-                                    {sup.phone && (
-                                        <a href={`tel:${sup.phone}`} className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors shadow-sm" title="Llamar">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
-                                        </a>
+                                {/* Detailed Info */}
+                                <div className="space-y-1.5 mt-1">
+                                    {sup.contact_name && (
+                                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                                            <span className="truncate">{sup.contact_name}</span>
+                                        </div>
                                     )}
-                                    {sup.email && (
-                                        <a href={`mailto:${sup.email}`} className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors shadow-sm" title="Email">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
-                                        </a>
-                                    )}
-                                    <button onClick={() => handleOpenEdit(sup)} className="p-2 text-gray-500 hover:text-brand-primary hover:bg-gray-100 rounded-lg transition-colors shadow-sm" title="Editar">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
-                                    </button>
+
+                                    {/* Badges Row */}
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                        {sup.phone && (
+                                            <div className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-100">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
+                                                {sup.phone}
+                                            </div>
+                                        )}
+                                        {sup.email && (
+                                            <div className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 max-w-full truncate">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
+                                                <span className="truncate max-w-[80px] sm:max-w-none">{sup.email}</span>
+                                            </div>
+                                        )}
+                                        {sup.tax_id && (
+                                            <div className="inline-flex items-center gap-1 text-[10px] bg-gray-50 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200">
+                                                <span className="font-bold text-[8px] uppercase text-gray-400">NIT</span>
+                                                {sup.tax_id}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>

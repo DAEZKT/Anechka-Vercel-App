@@ -91,10 +91,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
   };
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row font-sans text-gray-800 bg-gradient-to-br from-[#e0c3fc] to-[#8ec5fc]">
+    <div className="min-h-screen flex flex-col lg:flex-row font-sans text-gray-800 bg-gradient-to-br from-[#e0c3fc] to-[#8ec5fc]">
 
-      {/* MOBILE HEADER (Visible only on mobile) */}
-      <header className="md:hidden flex items-center justify-between p-4 glass-panel m-4 mb-0 sticky top-4 z-40 bg-white/60 backdrop-blur-xl">
+      {/* MOBILE HEADER (Visible only on mobile/tablet) */}
+      <header className="lg:hidden flex items-center justify-between p-4 glass-panel m-4 mb-0 sticky top-4 z-40 bg-white/60 backdrop-blur-xl">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsMobileMenuOpen(true)}
@@ -120,27 +120,27 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
         />
       )}
 
-      {/* SIDEBAR (Responsive: Fixed Drawer on Mobile, Static Panel on Desktop) */}
+      {/* SIDEBAR (Responsive: Fixed Drawer on Mobile/Tablet, Static on Desktop) */}
       <aside
         className={`
-          fixed md:static inset-y-0 left-0 z-50 w-72 md:w-64 
-          glass-panel md:m-4 md:rounded-2xl 
-          flex flex-col h-full md:h-[calc(100vh-2rem)]
+          fixed lg:static inset-y-0 left-0 z-50 w-72 lg:w-64
+          glass-panel lg:m-4 lg:rounded-2xl
+          flex flex-col h-full lg:h-[calc(100vh-2rem)]
           transform transition-transform duration-300 ease-in-out
-          ${isMobileMenuOpen ? 'translate-x-0 rounded-r-2xl border-r-white/50 shadow-2xl' : '-translate-x-full md:translate-x-0'}
-          bg-white/80 md:bg-white/25
+          ${isMobileMenuOpen ? 'translate-x-0 rounded-r-2xl border-r-white/50 shadow-2xl' : '-translate-x-full lg:translate-x-0'}
+          bg-white/80 lg:bg-white/25
         `}
       >
         {/* Sidebar Header */}
         <div className="p-6 flex justify-between items-start border-b border-white/20">
-          <div className="text-left md:text-center md:w-full">
+          <div className="text-left lg:text-center lg:w-full">
             <h1 className="text-2xl font-bold text-brand-primary tracking-tight">Anechka</h1>
             <p className="text-xs text-gray-500 uppercase tracking-widest mt-1">POS & ERP System</p>
           </div>
           {/* Close Button (Mobile Only) */}
           <button
             onClick={() => setIsMobileMenuOpen(false)}
-            className="md:hidden text-gray-500 hover:text-red-500 transition-colors"
+            className="lg:hidden text-gray-500 hover:text-red-500 transition-colors"
           >
             <Icons.X className="w-6 h-6" />
           </button>
@@ -252,7 +252,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
         </nav>
 
         {/* Sidebar Footer (User Profile) */}
-        <div className="p-4 border-t border-white/20 bg-white/30 md:bg-white/10">
+        <div className="p-4 border-t border-white/20 bg-white/30 lg:bg-white/10">
           <div
             className="flex items-center gap-3 mb-3 cursor-pointer hover:bg-white/20 p-2 rounded-lg transition-colors group/profile"
             onClick={() => setIsProfileModalOpen(true)}
@@ -288,8 +288,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
       )}
 
       {/* Main Content Area */}
-      {/* Adjusted margins: md:ml-0 because Sidebar is now flex in flow on desktop, no longer absolute positioning needed for main layout */}
-      <main className="flex-1 p-4 md:p-8 overflow-x-hidden min-h-[calc(100vh-80px)] md:min-h-screen">
+      {/* Adjusted margins: lg:ml-0 because Sidebar is now flex in flow on desktop, no longer absolute positioning needed for main layout */}
+      <main className="flex-1 p-4 lg:p-8 overflow-x-hidden min-h-[calc(100vh-80px)] lg:min-h-screen">
         {children}
       </main>
 
