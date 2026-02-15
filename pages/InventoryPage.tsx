@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { GlassCard } from '../components/GlassCard';
 import { productService, inventoryService, categoryService, auditService, brandService } from '../services/supabaseService';
 import { Product, User, MovementType, ProductGender, Category, InventoryMovementHeader, InventoryMovementDetail, AuditSession, Brand } from '../types';
@@ -82,6 +84,9 @@ const Icons = {
   ),
   Shutter: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" /></svg>
+  ),
+  FileText: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
   )
 };
 
@@ -713,6 +718,97 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
     units: products.reduce((sum, p) => sum + p.stock_level, 0),
     value: products.reduce((sum, p) => sum + (p.stock_level * p.price), 0),
     investment: totalInvestment
+  };
+
+  const generateInventoryReport = () => {
+    const doc = new jsPDF();
+    const date = new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString();
+
+    // Title
+    doc.setFontSize(22);
+    doc.setTextColor(40);
+    doc.text("Reporte de Salud y Stock", 14, 20);
+
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`ANECHKA POS SYSTEM - Generado: ${date}`, 14, 26);
+
+    // Summary Metrics based on Filtered Stock
+    const itemsCount = filteredStock.length;
+    const unitsCount = filteredStock.reduce((sum, p) => sum + p.stock_level, 0);
+    const saleValue = filteredStock.reduce((sum, p) => sum + (p.stock_level * p.price), 0);
+
+    // Summary Box
+    doc.setDrawColor(220);
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, 32, 182, 28, 3, 3, 'FD');
+
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text("ITEMS LISTADOS", 20, 42);
+    doc.text("UNIDADES TOTALES", 80, 42);
+    doc.text("VALOR VENTA TOTAL", 140, 42);
+
+    doc.setFontSize(16);
+    doc.setTextColor(33, 33, 33);
+    doc.setFont("helvetica", "bold");
+    doc.text(itemsCount.toString(), 20, 52);
+    doc.text(unitsCount.toString(), 80, 52);
+    doc.setTextColor(40, 167, 69); // Green for money
+    doc.text(`$${saleValue.toLocaleString()}`, 140, 52);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0);
+
+    // Table Data
+    const tableColumn = ["Producto", "SKU", "Marca", "Categoría", "Stock", "Estado", "Precio", "Total"];
+    const tableRows = filteredStock.map(p => {
+      let status = "OK";
+      if (p.stock_level <= 0) status = "AGOTADO";
+      else if (p.stock_level <= p.min_stock) status = "BAJO";
+
+      return [
+        p.name.substring(0, 35),
+        p.sku,
+        p.brand,
+        p.category_name || '-',
+        p.stock_level,
+        status,
+        `$${p.price.toFixed(2)}`,
+        `$${(p.stock_level * p.price).toFixed(2)}`
+      ];
+    });
+
+    // AutoTable
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 70,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 3, valign: 'middle' },
+      headStyles: { fillColor: [33, 33, 33], textColor: 255, fontStyle: 'bold', halign: 'center' },
+      columnStyles: {
+        0: { cellWidth: 50 }, // Name
+        4: { halign: 'center' }, // Stock
+        5: { halign: 'center', fontStyle: 'bold' }, // Status
+        6: { halign: 'right' }, // Price
+        7: { halign: 'right', fontStyle: 'bold' }  // Total
+      },
+      didParseCell: function (data) {
+        if (data.section === 'body' && data.column.index === 5) {
+          const status = data.cell.raw;
+          if (status === 'AGOTADO') {
+            data.cell.styles.textColor = [220, 53, 69]; // Red
+          } else if (status === 'BAJO') {
+            data.cell.styles.textColor = [255, 140, 0]; // Orange
+          } else {
+            data.cell.styles.textColor = [40, 167, 69]; // Green
+          }
+        }
+      }
+    });
+
+    doc.save(`Inventario_Anechka_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   return (
@@ -1513,6 +1609,14 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Bajo</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Agotado</span>
             </div>
+
+            <button
+              onClick={generateInventoryReport}
+              className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-4 py-2 rounded-lg text-xs font-bold shadow-sm hover:shadow transition-all flex items-center gap-2 whitespace-nowrap"
+              title="Descargar Reporte PDF"
+            >
+              <Icons.FileText /> PDF Reporte
+            </button>
           </GlassCard>
 
           {/* DATA TABLE CARD */}
