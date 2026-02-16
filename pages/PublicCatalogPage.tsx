@@ -197,7 +197,7 @@ export const PublicCatalogPage: React.FC = () => {
                     </a>
                     <div className="h-4 w-px bg-gray-200"></div>
                     <div>
-                        <h1 className="font-black text-xl tracking-tighter text-brand-primary">ANECHKA</h1>
+                        <h1 className="font-black text-xl tracking-tighter text-brand-primary">DAEZKT</h1>
                         <p className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">Catálogo en Línea</p>
                     </div>
                 </div>
@@ -217,7 +217,7 @@ export const PublicCatalogPage: React.FC = () => {
             {/* Main Content with Container */}
             <div className="max-w-7xl mx-auto w-full">
                 {/* Filters */}
-                <div className="p-4 space-y-3 sticky top-[60px] z-20 bg-gray-50/95 backdrop-blur-sm">
+                <div className="p-4 space-y-3 sticky top-[64px] z-20 bg-gray-50/95 backdrop-blur-sm shadow-sm">
                     <div className="relative max-w-lg mx-auto md:mx-0 mb-6">
                         <input
                             type="text"
@@ -232,10 +232,10 @@ export const PublicCatalogPage: React.FC = () => {
                     </div>
 
                     {/* Brand Filter - Premium Pill Design */}
-                    <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar mask-gradient-right items-center">
+                    <div className="flex gap-2 overflow-x-auto py-3 px-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] items-center">
                         <button
                             onClick={() => setSelectedBrand('ALL')}
-                            className={`min-w-[80px] h-[45px] rounded-xl flex items-center justify-center px-4 transition-all duration-300 font-bold text-xs tracking-wide shadow-sm flex-shrink-0
+                            className={`min-w-[70px] h-[40px] rounded-xl flex items-center justify-center px-3 transition-all duration-300 font-bold text-[10px] tracking-wide shadow-sm flex-shrink-0
                                 ${selectedBrand === 'ALL'
                                     ? 'bg-gray-900 text-white shadow-lg shadow-gray-900/20 scale-105'
                                     : 'bg-white text-gray-500 hover:bg-white hover:text-gray-800'}`}
@@ -247,7 +247,7 @@ export const PublicCatalogPage: React.FC = () => {
                             <button
                                 key={brand.id}
                                 onClick={() => setSelectedBrand(brand.id)}
-                                className={`min-w-[80px] h-[45px] bg-white rounded-xl flex items-center justify-center px-4 py-2 transition-all duration-300 shadow-sm group border flex-shrink-0
+                                className={`h-[40px] min-w-[70px] max-w-[120px] bg-white rounded-xl flex items-center justify-center px-3 py-1.5 transition-all duration-300 shadow-sm group border flex-shrink-0
                                     ${selectedBrand === brand.id
                                         ? 'border-brand-primary ring-2 ring-brand-primary/10 shadow-lg shadow-brand-primary/10 scale-105 z-10'
                                         : 'border-transparent hover:border-gray-100 hover:shadow-md'}`}
@@ -260,7 +260,7 @@ export const PublicCatalogPage: React.FC = () => {
                                         className={`h-full w-auto object-contain transition-all duration-300 ${selectedBrand === brand.id ? 'opacity-100' : 'opacity-80 group-hover:opacity-100 grayscale-0'}`}
                                     />
                                 ) : (
-                                    <span className={`text-[10px] font-bold uppercase transition-colors ${selectedBrand === brand.id ? 'text-brand-primary' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                                    <span className={`text-[10px] font-bold uppercase truncate transition-colors ${selectedBrand === brand.id ? 'text-brand-primary' : 'text-gray-400 group-hover:text-gray-600'}`}>
                                         {brand.name}
                                     </span>
                                 )}

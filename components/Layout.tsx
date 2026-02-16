@@ -103,7 +103,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
             <Icons.Menu className="w-7 h-7" />
           </button>
           <div>
-            <h1 className="text-lg font-black text-gray-800 tracking-tighter uppercase leading-none">ANECHKA</h1>
+            <h1 className="text-lg font-black text-gray-800 tracking-tighter uppercase leading-none">DAEZKT</h1>
             <p className="text-[9px] text-gray-500 tracking-[0.2em] font-medium leading-none">POS SYSTEM</p>
           </div>
         </div>
@@ -134,7 +134,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
         {/* Sidebar Header */}
         <div className="p-6 flex justify-between items-start border-b border-white/20">
           <div className="text-left lg:text-center lg:w-full">
-            <h1 className="text-2xl font-bold text-brand-primary tracking-tight">Anechka</h1>
+            <h1 className="text-2xl font-bold text-brand-primary tracking-tight">DAEZKT</h1>
             <p className="text-xs text-gray-500 uppercase tracking-widest mt-1">POS & ERP System</p>
           </div>
           {/* Close Button (Mobile Only) */}

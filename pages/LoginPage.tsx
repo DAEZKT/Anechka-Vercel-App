@@ -56,10 +56,10 @@ export const LoginPage: React.FC<LoginProps> = ({ onLogin, onNavigate }) => {
         <div>
           <div className="flex items-center gap-3 mb-12">
             <div className="w-10 h-10 bg-violet-700 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-violet-700/30">
-              TA
+              DZ
             </div>
             <div>
-              <h1 className="text-2xl font-black text-gray-800 tracking-tighter uppercase">ANECHKA</h1>
+              <h1 className="text-2xl font-black text-gray-800 tracking-tighter uppercase">DAEZKT</h1>
               <p className="text-[10px] text-gray-400 tracking-[0.2em] font-medium">POS & ERP SYSTEM</p>
             </div>
           </div>
@@ -174,7 +174,7 @@ export const LoginPage: React.FC<LoginProps> = ({ onLogin, onNavigate }) => {
 
         {/* Footer */}
         <div className="mt-8 pt-6 border-t border-gray-100 flex justify-between items-center text-[10px] text-gray-400">
-          <p>© 2024 Anechka Systems</p>
+          <p>© 2026 DAEZKT Systems</p>
           <button
             type="button"
             onClick={() => onNavigate('public-catalog')}
@@ -196,7 +196,7 @@ export const LoginPage: React.FC<LoginProps> = ({ onLogin, onNavigate }) => {
         <div className="relative z-10 w-[450px] bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 p-8 shadow-2xl">
           <div className="flex items-center gap-3 mb-6">
             <span className="bg-white/20 px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-wider">Admin Panel</span>
-            <span className="text-[10px] text-white/60 font-medium">Anechka Cloud</span>
+            <span className="text-[10px] text-white/60 font-medium">DAEZKT Cloud</span>
           </div>
 
           <h2 className="text-3xl font-bold text-white mb-4 leading-tight">

@@ -122,6 +122,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
   const [qtyInput, setQtyInput] = useState(1);
   const [costInput, setCostInput] = useState(0);
   const [priceInputState, setPriceInput] = useState(0);
+  const [showProductResults, setShowProductResults] = useState(false); // New State for Autocomplete
 
   // --- PRODUCT REGISTRY / EDIT STATE ---
   const [newProduct, setNewProduct] = useState(INITIAL_PRODUCT_FORM);
@@ -138,6 +139,9 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
   const [activeAuditSession, setActiveAuditSession] = useState<AuditSession | null>(null);
   const [auditHistory, setAuditHistory] = useState<AuditSession[]>([]);
   const [showAuditHistory, setShowAuditHistory] = useState(false);
+
+  // --- INDEPENDENT SEARCH STATES ---
+  const [itemSearchTerm, setItemSearchTerm] = useState(''); // Specific for Movement Item Search
 
   // --- CAMERA (PHOTO) STATE ---
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -160,6 +164,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
       // Clean detail inputs too
       setSelectedProductId('');
       setMovementSku('');
+      setItemSearchTerm(''); // Clear item search
       setQtyInput(1);
       setCostInput(0);
       setPriceInput(0);
@@ -464,6 +469,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
 
     setSelectedProductId('');
     setMovementSku('');
+    setItemSearchTerm(''); // Clear item search
     setQtyInput(1);
     setCostInput(0);
     setPriceInput(0);
@@ -1034,22 +1040,57 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
                     </div>
                   </div>
 
-                  <div className="flex-[2] w-full">
-                    <label className="block text-xs text-gray-500 mb-1">Seleccionar Producto (Solo Disponibles)</label>
+                  <div className="flex-[2] w-full relative">
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Buscar y Seleccionar Producto</label>
                     <div className="relative">
-                      <select
-                        value={selectedProductId}
-                        onChange={e => setSelectedProductId(e.target.value)}
-                        className="w-full px-3 py-2 pr-10 rounded-lg bg-white/80 border-none text-sm appearance-none focus:ring-2 focus:ring-brand-primary outline-none"
-                      >
-                        <option value="">-- Seleccionar --</option>
-                        {availableProducts.map(p => (
-                          <option key={p.id} value={p.id}>{p.sku} - {p.name} (Stock: {p.stock_level})</option>
-                        ))}
-                      </select>
-                      <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
-                        <Icons.ChevronDown />
-                      </div>
+                      <input
+                        type="text"
+                        placeholder="Escriba nombre del producto..."
+                        value={itemSearchTerm}
+                        onChange={e => {
+                          setItemSearchTerm(e.target.value);
+                          setSelectedProductId(''); // Reset selection on type
+                          setShowProductResults(true);
+                        }}
+                        onFocus={() => setShowProductResults(true)}
+                        className="w-full px-3 py-2 rounded-lg bg-white/60 border border-gray-200 text-sm focus:ring-2 focus:ring-brand-primary outline-none"
+                      />
+
+                      {/* AUTOCOMPLETE DROPDOWN */}
+                      {showProductResults && !selectedProductId && (
+                        <>
+                          <div className="fixed inset-0 z-20" onClick={() => setShowProductResults(false)} />
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-60 overflow-y-auto scrollbar-thin z-30 animate-fade-in-down">
+                            {availableProducts
+                              .filter(p => !itemSearchTerm || p.name.toLowerCase().includes(itemSearchTerm.toLowerCase()) || p.sku.toLowerCase().includes(itemSearchTerm.toLowerCase()))
+                              .length > 0 ? (
+                              availableProducts
+                                .filter(p => !itemSearchTerm || p.name.toLowerCase().includes(itemSearchTerm.toLowerCase()) || p.sku.toLowerCase().includes(itemSearchTerm.toLowerCase()))
+                                .map(p => (
+                                  <div
+                                    key={p.id}
+                                    onClick={() => {
+                                      setSelectedProductId(p.id);
+                                      setItemSearchTerm(p.name);
+                                      setShowProductResults(false);
+                                    }}
+                                    className="px-4 py-2 hover:bg-violet-50 cursor-pointer border-b border-gray-50 last:border-0"
+                                  >
+                                    <div className="font-bold text-gray-800 text-sm">{p.name}</div>
+                                    <div className="flex justify-between items-center text-xs text-gray-400 mt-0.5">
+                                      <span>SKU: {p.sku}</span>
+                                      <span className={p.stock_level <= p.min_stock ? 'text-red-500 font-bold' : 'text-gray-500'}>Stock: {p.stock_level}</span>
+                                    </div>
+                                  </div>
+                                ))
+                            ) : (
+                              <div className="p-4 text-center text-gray-400 text-xs italic">
+                                No se encontraron productos.
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

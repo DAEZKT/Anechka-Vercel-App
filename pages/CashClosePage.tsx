@@ -706,7 +706,7 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
                            </div>
                         ))}
                         {expensePaymentsList.map((p, idx) => (
-                           <div key={`pay-${idx}`} className="flex justify-between items-center text-xs bg-white/80 p-3 rounded-lg border border-rose-100 shadow-sm border-l-4 border-l-rose-400">
+                           <div key={`pay-${idx}`} className="flex justify-between items-center text-xs bg-white/80 p-3 rounded-lg border border-rose-100 shadow-sm">
                               <div>
                                  <span className="block font-bold text-gray-800">Abono Crédito</span>
                                  <span className="text-gray-500">{p.note || 'Sin referencia'}</span>
