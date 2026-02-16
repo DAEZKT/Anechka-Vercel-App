@@ -285,7 +285,7 @@ export const POS: React.FC<POSProps> = ({ user }) => {
   // --- CUSTOMER LOGIC ---
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
-    c.nit.includes(customerSearchTerm)
+    (c.nit || '').includes(customerSearchTerm)
   );
 
   const handleSelectCustomer = (customer: Customer) => {

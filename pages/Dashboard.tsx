@@ -190,6 +190,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
          .slice(0, 5); // Top 5
    }, [filteredData, products]);
 
+   const brandData = useMemo(() => {
+      const brandMap: Record<string, number> = {};
+      filteredData.details.forEach(d => {
+         const product = products.find(p => p.id === d.product_id);
+         const brandName = product?.brand_name || product?.brand || 'Sin Marca';
+         brandMap[brandName] = (brandMap[brandName] || 0) + d.subtotal;
+      });
+
+      return Object.entries(brandMap)
+         .map(([name, value]) => ({ name, value }))
+         .sort((a, b) => b.value - a.value)
+         .slice(0, 5); // Top 5
+   }, [filteredData, products]);
+
    const cleanMethodName = (name: string) => {
       if (!name) return 'Desconocido';
       return name.includes('|') ? name.split('|')[1].trim() : name;
@@ -458,7 +472,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
          </div>
 
          {/* CHARTS ROW 1 */}
-         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* SALES TREND CHART */}
             <GlassCard className="lg:col-span-2 min-h-[350px] md:min-h-[400px] flex flex-col p-4 md:p-6">
                <h3 className="font-bold text-lg text-gray-800 mb-4">Tendencia de Ingresos vs Egresos</h3>
@@ -505,6 +519,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                      </PieChart>
                   </ResponsiveContainer>
                   {categoryData.length === 0 && <p className="absolute text-gray-400 text-sm">Sin datos</p>}
+               </div>
+            </GlassCard>
+
+            {/* BRAND DONUT CHART */}
+            <GlassCard className="lg:col-span-1 min-h-[400px] flex flex-col p-6">
+               <h3 className="font-bold text-lg text-gray-800 mb-4">Ventas por Marca</h3>
+               <div className="flex-1 w-full min-h-0 flex items-center justify-center relative">
+                  <ResponsiveContainer width="100%" height={300}>
+                     <PieChart>
+                        <Pie
+                           data={brandData}
+                           cx="50%"
+                           cy="50%"
+                           innerRadius={60}
+                           outerRadius={80}
+                           paddingAngle={5}
+                           dataKey="value"
+                        >
+                           {brandData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                           ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(value: any) => `$${value.toLocaleString()}`} />
+                        <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                     </PieChart>
+                  </ResponsiveContainer>
+                  {brandData.length === 0 && <p className="absolute text-gray-400 text-sm">Sin datos</p>}
                </div>
             </GlassCard>
          </div>
