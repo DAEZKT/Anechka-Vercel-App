@@ -171,6 +171,37 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
     }
   }, [initialView]);
 
+  // --- WINDOW UNLOAD PROTECTION (Refresh / Close Tab) ---
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (currentView === 'CATALOG') {
+        const isNewMode = !editingProduct;
+        const baseline = isNewMode ? INITIAL_PRODUCT_FORM : {
+          sku: editingProduct?.sku || '',
+          name: editingProduct?.name || '',
+          brand: editingProduct?.brand || '',
+          brand_id: editingProduct?.brand_id || '',
+          color: editingProduct?.color || '',
+          description: editingProduct?.description || '',
+          category_id: editingProduct?.category_id || '',
+          min_stock: editingProduct?.min_stock || 0,
+          gender: editingProduct?.gender || 'UNISEX',
+          size: editingProduct?.size || '',
+          image_url: editingProduct?.image_url || ''
+        };
+
+        // Note: We use JSON.stringify for deep comparison of simple objects
+        if (JSON.stringify(newProduct) !== JSON.stringify(baseline)) {
+          e.preventDefault();
+          e.returnValue = ''; // Chrome requires returnValue to be set
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [currentView, newProduct, editingProduct]);
+
   const refreshData = async () => {
     setLoading(true);
     const [prods, cats, brnds] = await Promise.all([
