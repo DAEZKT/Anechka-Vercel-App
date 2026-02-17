@@ -99,88 +99,151 @@ export const POS: React.FC<POSProps> = ({ user }) => {
   };
 
   // --- TICKET GENERATOR ---
-  const generateTicket = (orderId: string, customerName: string, items: CartItem[], payments: PaymentEntry[]) => {
+  const generateTicket = (orderId: string, customerName: string, items: CartItem[], payments: PaymentEntry[], sellerName: string) => {
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
-      format: [80, 200] // 80mm thermal paper width
+      format: [80, 220] // 80mm thermal paper width, slightly longer
     });
 
     const pageWidth = doc.internal.pageSize.getWidth();
     let y = 10;
 
-    // Header
-    doc.setFontSize(10);
+    // --- HEADER ---
+    // Brand Logo (Text Representation)
+    doc.setTextColor(139, 92, 246); // #8b5cf6 Brand Primary (Violeta)
+    doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
-    doc.text("TIENDA ANECHKA", pageWidth / 2, y, { align: "center" });
-    y += 5;
+    doc.text("DAEZKT", pageWidth / 2, y, { align: "center" });
+    y += 6;
 
-    doc.setFontSize(8);
+    // Subtitle
+    doc.setTextColor(100, 100, 100); // Gray
+    doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     doc.text("Moda y Estilo", pageWidth / 2, y, { align: "center" });
-    y += 5;
-    doc.text(`${new Date().toLocaleString()}`, pageWidth / 2, y, { align: "center" });
-    y += 5;
-    doc.text(`Ticket: ${orderId}`, pageWidth / 2, y, { align: "center" });
-    y += 7;
+    y += 6;
 
-    // Customer
-    doc.text(`Cliente: ${customerName}`, 5, y);
-    y += 5;
+    // Separator Line
+    doc.setDrawColor(220, 220, 220);
     doc.line(5, y, pageWidth - 5, y);
     y += 5;
 
-    // Items
+    // Meta Info
+    doc.setTextColor(0, 0, 0); // Reset to Black
+    doc.setFontSize(8);
+    doc.text(`${new Date().toLocaleString()}`, pageWidth / 2, y, { align: "center" });
+    y += 4;
+    doc.text(`Atendido por: ${sellerName}`, pageWidth / 2, y, { align: "center" });
+    y += 4;
+    doc.setFontSize(7);
+    doc.text(`Ticket: ${orderId.slice(0, 18)}...`, pageWidth / 2, y, { align: "center" });
+    y += 6;
+
+    // --- CUSTOMER ---
+    doc.setFillColor(245, 245, 245);
+    doc.rect(2, y, pageWidth - 4, 10, 'F');
+    y += 4;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("CLIENTE:", 5, y + 2);
+    doc.setFont("helvetica", "normal");
+    doc.text(customerName.toUpperCase(), 22, y + 2);
+    y += 10;
+
+    // --- ITEMS HEADER ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("Cant", 5, y);
+    doc.text("Producto", 13, y);
+    doc.text("Precio", 50, y, { align: "right" });
+    doc.text("Total", pageWidth - 5, y, { align: "right" });
+    y += 3;
+    doc.setDrawColor(0, 0, 0);
+    doc.line(5, y, pageWidth - 5, y);
+    y += 4;
+
+    // --- ITEMS LIST ---
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
 
     items.forEach(item => {
-      const finalPrice = item.price - (item.discountPerUnit || 0);
+      const discount = item.discountPerUnit || 0;
+      const finalPrice = item.price - discount;
       const subtotal = finalPrice * item.quantity;
 
-      // Line 1: Name
-      doc.setFont("helvetica", "bold");
-      doc.text(`${item.quantity} x ${item.name}`, 5, y);
-      y += 4;
+      // Item Name handling for wrapping
+      const nameLines = doc.splitTextToSize(item.name, 35); // Reduced width for name to fit columns
 
-      // Line 2: Prices
-      doc.setFont("helvetica", "normal");
-      let priceText = `$${item.price.toFixed(2)}`;
-      if (item.discountPerUnit && item.discountPerUnit > 0) {
-        priceText += ` (-$${item.discountPerUnit.toFixed(2)})`;
-      }
-      doc.text(priceText, 10, y);
+      doc.text(`${item.quantity}`, 7, y, { align: "center" });
+      doc.text(nameLines, 13, y);
+
+      // Unit Price
+      doc.text(`$${item.price.toFixed(2)}`, 50, y, { align: "right" });
+
+      // Total Calculation
       doc.setFont("helvetica", "bold");
       doc.text(`$${subtotal.toFixed(2)}`, pageWidth - 5, y, { align: "right" });
-      y += 5;
+      doc.setFont("helvetica", "normal");
+
+      // Handling Discount Line if exists
+      if (discount > 0) {
+        y += (nameLines.length * 4);
+        doc.setFontSize(7);
+        doc.setTextColor(255, 0, 0); // Red for discount
+        doc.text(`Desc: -$${(discount * item.quantity).toFixed(2)}`, 13, y);
+        doc.setTextColor(0, 0, 0); // Reset
+        doc.setFontSize(8);
+        y += 2;
+      } else {
+        y += (nameLines.length * 4) + 2;
+      }
     });
 
     doc.line(5, y, pageWidth - 5, y);
     y += 5;
 
-    // Totals
+    // --- TOTALS ---
     const total = items.reduce((sum, item) => sum + ((item.price - (item.discountPerUnit || 0)) * item.quantity), 0);
-    doc.setFontSize(10);
-    doc.text("TOTAL:", 5, y);
-    doc.text(`$${total.toFixed(2)}`, pageWidth - 5, y, { align: "right" });
-    y += 7;
 
-    // Payments
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("TOTAL A PAGAR:", 5, y);
+    doc.setTextColor(139, 92, 246); // Brand Color for Total
+    doc.text(`$${total.toFixed(2)}`, pageWidth - 5, y, { align: "right" });
+    doc.setTextColor(0, 0, 0); // Reset
+    y += 8;
+
+    // --- PAYMENTS ---
     doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.text("Forma de Pago:", 5, y);
+    y += 5;
+
     doc.setFont("helvetica", "normal");
-    doc.text("Pagos Recibidos:", 5, y);
-    y += 4;
+    const getPaymentLabel = (type: string) => {
+      switch (type) {
+        case 'CASH': return 'Efectivo';
+        case 'CARD': return 'Tarjeta (POS)';
+        case 'TRANSFER': return 'Transferencia';
+        default: return 'Otro';
+      }
+    };
 
     payments.forEach(p => {
-      doc.text(`${p.methodName}`, 10, y);
+      doc.text(`${getPaymentLabel(p.type)}`, 10, y);
       doc.text(`$${p.amount.toFixed(2)}`, pageWidth - 5, y, { align: "right" });
       y += 4;
     });
 
-    // Footer
-    y += 5;
+    // --- FOOTER ---
+    y = 200; // Sticky bottom approximate
     doc.setFont("helvetica", "italic");
     doc.setFontSize(7);
-    doc.text("¡Gracias por su compra!", pageWidth / 2, y, { align: "center" });
+    doc.setTextColor(100, 100, 100);
+    doc.text("¡Gracias por su preferencia!", pageWidth / 2, y, { align: "center" });
+    y += 4;
+    doc.text("DAEZKT - Estilo Único", pageWidth / 2, y, { align: "center" });
 
     doc.autoPrint();
     window.open(doc.output('bloburl'), '_blank');
@@ -396,7 +459,7 @@ export const POS: React.FC<POSProps> = ({ user }) => {
 
       if (result.success) {
         if (window.confirm(`Cobro registrado correctamente. Ticket: ${result.saleId || result.saleNumber}\n¿Desea imprimir el ticket?`)) {
-          generateTicket(result.saleId || result.saleNumber || '', finalCustomerName, cart, paymentEntries);
+          generateTicket(result.saleId || result.saleNumber || '', finalCustomerName, cart, paymentEntries, user.full_name);
         }
 
         // Reset everything

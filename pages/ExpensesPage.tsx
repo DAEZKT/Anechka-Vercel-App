@@ -47,8 +47,11 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [showSupplierResults, setShowSupplierResults] = useState(false);
 
-  // Tab State: ALL (Registro General) vs CREDIT (Cuentas por Pagar) vs SUPPLIER_BALANCE (Saldo por Proveedor)
-  const [activeTab, setActiveTab] = useState<'ALL' | 'CREDIT' | 'SUPPLIER_BALANCE'>('ALL');
+  // Tab State: ALL (Registro General) vs CREDIT (Cuentas por Pagar) vs SUPPLIER_BALANCE (Saldo por Proveedor) vs PAYMENT_HISTORY (Historial de Abonos)
+  const [activeTab, setActiveTab] = useState<'ALL' | 'CREDIT' | 'SUPPLIER_BALANCE' | 'PAYMENT_HISTORY'>('ALL');
+
+  // Payment History State
+  const [allPayments, setAllPayments] = useState<ExpensePayment[]>([]);
 
   // CXP Management State
   const [isDebtModalOpen, setIsDebtModalOpen] = useState(false);
@@ -103,8 +106,23 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
     loadSuppliers();
     loadData();
     loadSuppliers();
+    loadData();
+    loadSuppliers();
     loadAccountOptions();
+    loadPaymentsHistory();
   }, []);
+
+  const loadPaymentsHistory = async () => {
+    try {
+      const payments = await expenseService.getAllPayments();
+      // Enrichment: We need to know which expense/supplier this payment belongs to.
+      // The current ExpensePayment interface might only have expense_id. 
+      // We might need to join client-side or assume the service returns enriched data or we find the expense in the 'expenses' list.
+      setAllPayments(payments);
+    } catch (e) {
+      console.error("Error loading payments history", e);
+    }
+  };
 
   const loadAccountOptions = async () => {
     try {
@@ -565,6 +583,13 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
           Saldo por Proveedor
           {activeTab === 'SUPPLIER_BALANCE' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-primary"></div>}
         </button>
+        <button
+          onClick={() => setActiveTab('PAYMENT_HISTORY')}
+          className={`px-4 py-2 font-bold text-sm transition-colors relative ${activeTab === 'PAYMENT_HISTORY' ? 'text-brand-primary' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Historial de Abonos
+          {activeTab === 'PAYMENT_HISTORY' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-primary"></div>}
+        </button>
       </div>
 
       {/* Filters Bar */}
@@ -644,6 +669,50 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
                       </td>
                     </tr>
                   ))
+                )}
+              </tbody>
+            </table>
+          ) : activeTab === 'PAYMENT_HISTORY' ? (
+            /* PAYMENT HISTORY TABLE */
+            <table className="w-full text-left text-xs">
+              <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200 uppercase tracking-wider">
+                <tr>
+                  <th className="py-3 px-4 min-w-[120px]">Fecha Pago</th>
+                  <th className="py-3 px-4 min-w-[180px]">Proveedor / Gasto</th>
+                  <th className="py-3 px-4 text-left min-w-[150px]">Nota / Referencia</th>
+                  <th className="py-3 px-4 text-left min-w-[120px]">Registrado Por</th>
+                  <th className="py-3 px-4 text-right min-w-[120px]">Monto Abonado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {allPayments.length === 0 ? (
+                  <tr><td colSpan={5} className="py-8 text-center text-gray-400">No hay abonos registrados.</td></tr>
+                ) : (
+                  allPayments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(pay => {
+                    // Find related expense to show supplier
+                    const relatedExpense = expenses.find(e => e.id === pay.expense_id);
+                    const supplierName = relatedExpense ? relatedExpense.supplier : 'Gasto Eliminado / Desconocido';
+
+                    return (
+                      <tr key={pay.id} className="hover:bg-white/40 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-gray-700">{getBusinessDateString(pay.date)}</span>
+                            <span className="text-[10px] text-gray-400">{new Date(pay.date).toLocaleTimeString()}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="block font-bold text-gray-800">{supplierName}</span>
+                          {relatedExpense && <span className="text-[10px] text-gray-500">Ref Gasto: {relatedExpense.sub_account}</span>}
+                        </td>
+                        <td className="py-3 px-4 text-gray-600 font-medium break-all max-w-[200px]">{pay.note || '-'}</td>
+                        <td className="py-3 px-4 text-gray-500 text-[10px]">ID: {pay.user_id?.slice(0, 8)}...</td>
+                        <td className="py-3 px-4 text-right font-black text-green-600">
+                          +${pay.amount.toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

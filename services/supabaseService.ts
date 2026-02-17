@@ -1290,9 +1290,9 @@ export const orderService = {
     customer_name: string;
     customer_address?: string;
     customer_gps?: string;
+    customer_phone?: string;
     items: CartItem[];
     total: number;
-    phone?: string;
   }): Promise<{ success: boolean; id?: string }> => {
     // Explicitly allow public insert via RLS, but we use the anon client here
     const { data, error } = await supabase
@@ -1301,6 +1301,7 @@ export const orderService = {
         customer_name: order.customer_name,
         customer_address: order.customer_address,
         customer_gps: order.customer_gps,
+        customer_phone: order.customer_phone,
         items: order.items, // JSONB
         total: order.total,
         status: 'PENDING'

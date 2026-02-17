@@ -4,6 +4,7 @@ import { productService, salesService, expenseService } from '../services/supaba
 import { Product, SaleHeader, Expense, User, SaleDetail } from '../types';
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getBusinessDateString, toLocalDateString, getLocalDateString } from '../utils/dateUtils';
 import {
    BarChart,
    Bar,
@@ -36,12 +37,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
 
       // Helper to get local YYYY-MM-DD
-      const toLocalISO = (d: Date) => {
-         const year = d.getFullYear();
-         const month = String(d.getMonth() + 1).padStart(2, '0');
-         const day = String(d.getDate()).padStart(2, '0');
-         return `${year}-${month}-${day}`;
-      };
+      const toLocalISO = (d: Date) => getLocalDateString(d);
 
       return {
          start: toLocalISO(firstDay),
@@ -79,26 +75,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       const startStr = dateRange.start;
       const endStr = dateRange.end;
 
-      const getLocalYMD = (dateInput: string | Date) => {
-         if (!dateInput) return '';
-         // If it's already YYYY-MM-DD string (common in expenses), return it directly to avoid TZ shifts
-         if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
-            return dateInput;
-         }
-         const d = new Date(dateInput);
-         const year = d.getFullYear();
-         const month = String(d.getMonth() + 1).padStart(2, '0');
-         const day = String(d.getDate()).padStart(2, '0');
-         return `${year}-${month}-${day}`;
-      };
-
       const filteredSales = sales.filter(s => {
-         const dateStr = getLocalYMD(s.created_at);
+         // Sales use TIMESTAMPTZ (created_at), so we convert to local date string to match user's wall clock day
+         const dateStr = toLocalDateString(s.created_at);
          return dateStr >= startStr && dateStr <= endStr;
       });
 
       const filteredExpenses = expenses.filter(e => {
-         const dateStr = getLocalYMD(e.date);
+         // Expenses used "Business Date" (YYYY-MM-DD string), so we take substring to avoid timezone shifts
+         const dateStr = getBusinessDateString(e.date);
          return dateStr >= startStr && dateStr <= endStr;
       });
 
@@ -126,13 +111,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       // Safety check: if range is invalid or too huge, limit it?
       // Assuming standard usage.
 
-      // Helper to format map keys as YYYY-MM-DD
-      const toYMD = (d: Date) => {
-         const year = d.getFullYear();
-         const month = String(d.getMonth() + 1).padStart(2, '0');
-         const day = String(d.getDate()).padStart(2, '0');
-         return `${year}-${month}-${day}`;
-      };
+      // Helper to format map keys as YYYY-MM-DD using our utility
+      const toYMD = (d: Date) => getLocalDateString(d);
 
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
          const dateStr = toYMD(d);
@@ -149,10 +129,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       }
 
       filteredData.sales.forEach(s => {
-         // Use getLocalYMD logic again or rely on map keys
-         // s.created_at is UTC ISO usually. new Date() gives local.
-         const d = new Date(s.created_at);
-         const dateKey = toYMD(d);
+         // Use toLocalDateString logic
+         const dateKey = toLocalDateString(s.created_at);
 
          if (dataMap.has(dateKey)) {
             dataMap.get(dateKey)!.income += s.total_amount;
@@ -160,13 +138,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       });
 
       filteredData.expenses.forEach(e => {
-         // e.date might be YYYY-MM-DD string
-         let dateKey = '';
-         if (typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)) {
-            dateKey = e.date;
-         } else {
-            dateKey = toYMD(new Date(e.date));
-         }
+         // Use getBusinessDateString logic
+         const dateKey = getBusinessDateString(e.date);
 
          if (dataMap.has(dateKey)) {
             dataMap.get(dateKey)!.expense += e.total;

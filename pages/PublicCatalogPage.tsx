@@ -42,6 +42,8 @@ export const PublicCatalogPage: React.FC = () => {
     // Customer Info State
     const [customerName, setCustomerName] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
+    const [customerCountryCode, setCustomerCountryCode] = useState('505');
+    const [customerPhone, setCustomerPhone] = useState('');
     const [customerGPS, setCustomerGPS] = useState('');
     const [isCaptchaValid, setIsCaptchaValid] = useState(false);
 
@@ -123,6 +125,7 @@ export const PublicCatalogPage: React.FC = () => {
             await orderService.create({
                 customer_name: cleanName,
                 customer_address: cleanAddress,
+                customer_phone: customerPhone ? `${customerCountryCode}${customerPhone}` : undefined,
                 customer_gps: cleanGPS,
                 items: cart,
                 total: totalItems
@@ -131,20 +134,22 @@ export const PublicCatalogPage: React.FC = () => {
             console.error("Error saving order", error);
         }
 
-        let message = `NUEVO PEDIDO - CATÁLOGO WEB\n\n`;
-        message += `CLIENTE: ${cleanName}\n`;
-        if (cleanAddress) message += `DIRECCIÓN: ${cleanAddress}\n`;
-        if (cleanGPS) message += `UBICACIÓN GPS: ${cleanGPS}\n`;
-        message += `\nPRODUCTOS:\n`;
+        let message = `*NUEVO PEDIDO - CATÁLOGO WEB DAEZKT*\n\n`;
+        message += `*Datos del Cliente*\n`;
+        message += `*Cliente:* ${cleanName}\n`;
+        if (customerPhone) message += `*Teléfono:* ${customerCountryCode}${customerPhone}\n`;
+        if (cleanAddress) message += `*Dirección:* ${cleanAddress}\n`;
+        if (cleanGPS) message += `*Ubicación:* ${cleanGPS}\n`;
+        message += `\n*PRODUCTOS:*\n`;
 
         let total = 0;
         cart.forEach(item => {
             const subtotal = item.price * item.quantity;
-            message += `- ${item.quantity}x ${item.name} ${item.size ? `[Talla: ${item.size}]` : ''} (${item.sku}) - $${subtotal.toFixed(2)}\n`;
+            message += `- (${item.quantity}x) ${item.name} ${item.size ? `[Talla: ${item.size}]` : ''}\n    Precio: $${item.price.toFixed(2)} c/u  ->  Subtotal: $${subtotal.toFixed(2)}\n`;
             total += subtotal;
         });
 
-        message += `\nTOTAL: $${total.toFixed(2)}`;
+        message += `\n*TOTAL: $${total.toFixed(2)}*`;
 
         const encodedMessage = encodeURIComponent(message);
         window.open(`https://wa.me/50581028407?text=${encodedMessage}`, '_blank');
@@ -153,6 +158,8 @@ export const PublicCatalogPage: React.FC = () => {
         setCart([]);
         setCustomerName('');
         setCustomerAddress('');
+        setCustomerCountryCode('505');
+        setCustomerPhone('');
         setCustomerGPS('');
         setIsCheckoutFormOpen(false);
     };
@@ -362,9 +369,25 @@ export const PublicCatalogPage: React.FC = () => {
 
             {/* Cart Modal / Sheet */}
             {isCartOpen && (
-                <div className="fixed inset-0 z-50 flex flex-col justify-end pointer-events-none">
-                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" onClick={() => setIsCartOpen(false)} />
-                    <div className="bg-white rounded-t-2xl shadow-xl w-full max-h-[85vh] flex flex-col pointer-events-auto animate-slide-up relative">
+                <div className="fixed inset-0 z-50 flex flex-col justify-end md:flex-row md:justify-end pointer-events-none">
+                    {/* Styles for animation */}
+                    <style>{`
+                        @keyframes slide-up {
+                            from { transform: translateY(100%); }
+                            to { transform: translateY(0); }
+                        }
+                        @keyframes slide-in-right {
+                            from { transform: translateX(100%); }
+                            to { transform: translateX(0); }
+                        }
+                        .animate-slide-up { animation: slide-up 0.3s ease-out; }
+                        .animate-slide-in-right { animation: slide-in-right 0.3s ease-out; }
+                    `}</style>
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity duration-300" onClick={() => setIsCartOpen(false)} />
+                    <div className="bg-white shadow-xl pointer-events-auto relative flex flex-col
+                        w-full max-h-[85vh] rounded-t-2xl animate-slide-up
+                        md:w-[450px] md:h-full md:max-h-screen md:rounded-l-2xl md:rounded-tr-none md:rounded-tl-2xl md:animate-slide-in-right
+                        transition-all duration-300 ease-out">
                         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                             <h2 className="font-bold text-lg">Tu Pedido</h2>
                             <button onClick={() => setIsCartOpen(false)} className="text-sm text-gray-500 font-medium">Cerrar</button>
@@ -423,13 +446,13 @@ export const PublicCatalogPage: React.FC = () => {
             {/* Customer Info Form Modal */}
             {isCheckoutFormOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                        <div className="bg-brand-primary p-4 text-white">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="bg-brand-primary p-4 text-white shrink-0">
                             <h2 className="font-bold text-lg">Información de Entrega</h2>
                             <p className="text-xs text-white/80 mt-1">Completa tus datos para finalizar el pedido</p>
                         </div>
 
-                        <div className="p-6 space-y-4">
+                        <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
                             <div>
                                 <label className="block text-xs font-bold text-gray-600 mb-2">Nombre Completo *</label>
                                 <input
@@ -440,6 +463,28 @@ export const PublicCatalogPage: React.FC = () => {
                                     placeholder="Ej: Juan Pérez"
                                     className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition-all"
                                 />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-2">Número de Celular</label>
+                                <div className="flex">
+                                    <input
+                                        type="text"
+                                        value={customerCountryCode}
+                                        onChange={(e) => setCustomerCountryCode(e.target.value.replace(/\D/g, ''))}
+                                        placeholder="505"
+                                        maxLength={4}
+                                        className="w-16 px-2 py-3 rounded-l-lg border border-r-0 border-gray-200 bg-gray-50 focus:bg-white focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition-all text-center font-bold text-gray-600"
+                                    />
+                                    <input
+                                        type="tel"
+                                        value={customerPhone}
+                                        onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, ''))}
+                                        placeholder="12345678"
+                                        maxLength={8}
+                                        className="flex-1 px-4 py-3 rounded-r-lg border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition-all"
+                                    />
+                                </div>
                             </div>
 
                             <div>
