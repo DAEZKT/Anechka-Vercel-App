@@ -53,6 +53,10 @@ export const SalesPage = () => {
    const [searchCustomer, setSearchCustomer] = useState('');
    const [searchMethod, setSearchMethod] = useState('');
 
+   // Pagination State
+   const [currentPage, setCurrentPage] = useState(1);
+   const itemsPerPage = 10;
+
    // Analytics State
    const [stats, setStats] = useState({
       totalSales: 0,
@@ -121,7 +125,14 @@ export const SalesPage = () => {
 
       setFilteredSales(result);
       calculateStats(result);
+      setCurrentPage(1); // Reset to first page on filter change
    }, [allSales, dateRange, searchCustomer, searchMethod]);
+
+   // --- PAGINATION LOGIC ---
+   const indexOfLastItem = currentPage * itemsPerPage;
+   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+   const paginatedSales = filteredSales.slice(indexOfFirstItem, indexOfLastItem);
+   const totalPages = Math.ceil(filteredSales.length / itemsPerPage);
 
    const loadData = async () => {
       setLoading(true);
@@ -474,20 +485,45 @@ export const SalesPage = () => {
    const handleSendWhatsApp = () => {
       if (!selectedSale) return;
 
-      let message = `Hola *${selectedSale.customer_name || 'Cliente'}*, gracias por tu compra en Tienda Anechka.\n\n`;
-      message += `*Detalle de Venta #${selectedSale.id}*\n`;
+      // Find customer phone number if available
+      let customerPhone = '';
+      if (selectedSale.customer_name) {
+         const cust = customers.find(c => c.name.toLowerCase() === selectedSale.customer_name?.toLowerCase());
+         if (cust && cust.phone) {
+            // Clean phone number: remove non-numeric chars
+            customerPhone = cust.phone.replace(/[^0-9]/g, '');
+         }
+      }
+
+      let message = `Hola *${selectedSale.customer_name || 'Cliente'}*, gracias por tu compra en *Tienda DAEZKT*.\n\n`;
+      message += `*Ticket #${selectedSale.id.slice(0, 8)}*\n`;
       message += `Fecha: ${new Date(selectedSale.created_at).toLocaleString()}\n\n`;
 
+      message += `*Productos:*\n`;
       saleDetails.forEach(d => {
          const productName = getProductName(d.product_id);
-         message += `• ${d.quantity} x ${productName} - $${d.subtotal.toFixed(2)}\n`;
+         message += `• ${d.quantity} x ${productName} ($${d.unit_price.toFixed(2)}) = $${d.subtotal.toFixed(2)}\n`;
       });
 
-      message += `\n*Total Pagado: $${selectedSale.total_amount.toFixed(2)}*`;
-      message += `\n\n¡Esperamos verte pronto!`;
+      if ((selectedSale.discount || 0) > 0) {
+         message += `\n*Descuento Aplicado: -$${selectedSale.discount?.toFixed(2)}*`;
+      }
+
+      message += `\n------------------\n`;
+      message += `*TOTAL PAGADO: $${selectedSale.total_amount.toFixed(2)}*\n`;
+      message += `------------------\n\n`;
+
+      message += `Gracias por su preferencia.\n`;
+      message += `*DAEZKT POS*`;
 
       const encoded = encodeURIComponent(message);
-      window.open(`https://wa.me/?text=${encoded}`, '_blank');
+
+      // If we have a phone, send directly. Else, open generic send.
+      const url = customerPhone
+         ? `https://wa.me/${customerPhone}?text=${encoded}`
+         : `https://wa.me/?text=${encoded}`;
+
+      window.open(url, '_blank');
    };
 
    const getProductName = (id: string) => products.find(p => p.id === id)?.name || id;
@@ -616,7 +652,7 @@ export const SalesPage = () => {
 
             <GlassCard className="flex flex-col">
                <span className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Ventas por Método</span>
-               <div className="flex-1 space-y-2 overflow-y-auto max-h-48 pr-2 scrollbar-thin">
+               <div className="flex-1 space-y-2 overflow-y-auto max-h-48 pr-2 custom-scrollbar">
                   {/* GROUPED DISPLAY */}
                   {Object.keys(stats.byMethodGrouped).length > 0 ? (
                      Object.entries(stats.byMethodGrouped).map(([type, methods]) => {
@@ -679,11 +715,12 @@ export const SalesPage = () => {
 
          {/* --- SALES TABLE --- */}
          <GlassCard className="p-0 overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* TABLE CONTAINER */}
+            <div className="overflow-x-auto custom-scrollbar">
                <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-white/50 text-gray-500 font-semibold border-b border-gray-200">
                      <tr>
-                        <th className="py-3 px-4 w-28">Ticket ID</th>
+                        <th className="py-3 px-4 w-40">Ticket ID</th>
                         <th className="py-3 px-4 w-32">Fecha</th>
                         <th className="py-3 px-4 min-w-[200px]">Cliente</th>
                         <th className="py-3 px-4 min-w-[250px]">Métodos de Pago</th>
@@ -698,9 +735,9 @@ export const SalesPage = () => {
                      {filteredSales.length === 0 ? (
                         <tr><td colSpan={9} className="py-12 text-center text-gray-400">No se encontraron ventas con los filtros actuales.</td></tr>
                      ) : (
-                        filteredSales.map(sale => (
+                        paginatedSales.map(sale => (
                            <tr key={sale.id} className="hover:bg-white/40 transition-colors group">
-                              <td className="py-3 px-4 font-mono text-gray-600 font-bold text-xs">{sale.id}</td>
+                              <td className="py-3 px-4 font-mono text-gray-600 font-bold text-xs">{sale.id.substring(0, 13)}...</td>
                               <td className="py-3 px-4">
                                  <div className="flex flex-col">
                                     <span className="font-bold text-gray-700 text-xs">
@@ -711,9 +748,9 @@ export const SalesPage = () => {
                                     </span>
                                  </div>
                               </td>
-                              <td className="py-3 px-4 font-medium text-gray-800 break-words whitespace-normal">{sale.customer_name}</td>
+                              <td className="py-3 px-4 font-medium text-gray-800 break-words whitespace-normal max-w-[150px]">{sale.customer_name}</td>
                               <td className="py-3 px-4">
-                                 <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs border border-gray-200 inline-block whitespace-normal">
+                                 <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs border border-gray-200 inline-block whitespace-normal max-w-[200px]">
                                     {cleanSnapshot(sale.payment_method_snapshot)}
                                  </span>
                               </td>
@@ -724,13 +761,13 @@ export const SalesPage = () => {
                               <td className="py-3 px-4 text-right font-black text-gray-800">${sale.total_amount.toFixed(2)}</td>
                               <td className="py-3 px-4 text-center">
                                  <span className="px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold uppercase">
-                                    {sale.status === 'COMPLETED' ? 'Completado' : sale.status}
+                                    {sale.status === 'COMPLETED' ? 'OK' : sale.status}
                                  </span>
                               </td>
                               <td className="py-3 px-4 text-right">
                                  <button
                                     onClick={() => handleViewDetails(sale)}
-                                    className="text-brand-primary hover:text-brand-secondary p-1 font-bold text-xs border border-brand-primary/30 rounded px-2 hover:bg-brand-primary/10 transition-colors"
+                                    className="text-brand-primary font-bold text-xs hover:underline border border-brand-primary/30 px-3 py-1.5 rounded-lg hover:bg-brand-primary/10 transition-colors"
                                  >
                                     Ver Detalle
                                  </button>
@@ -741,6 +778,51 @@ export const SalesPage = () => {
                   </tbody>
                </table>
             </div>
+
+            {/* PAGINATION CONTROLS */}
+            {filteredSales.length > 0 && (
+               <div className="flex justify-between items-center bg-white/30 border-t border-gray-100 p-4 backdrop-blur-sm">
+                  <div className="text-xs text-gray-500 font-medium">
+                     Mostrando {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredSales.length)} de {filteredSales.length} ventas
+                  </div>
+                  <div className="flex items-center gap-2">
+                     <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="p-2 rounded-lg hover:bg-white/50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-brand-primary"
+                     >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                     </button>
+
+                     <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                           let pageNum = i + 1;
+                           if (totalPages > 5) {
+                              // Simple logic to show near current page
+                              if (currentPage > 3) pageNum = currentPage - 2 + i;
+                              if (pageNum > totalPages) pageNum = i + 1; // Fallback, though simplified
+                           }
+
+                           // Simplified Logic: Just show 1..N if small, or simple range. 
+                           // For robustness let's just show current page input or simple prev/next.
+                           // Actually, let's just show simple "Page X of Y" to be safe and clean.
+                           return null;
+                        })}
+                        <span className="text-xs font-bold text-gray-700 mx-2">
+                           Página {currentPage} de {totalPages}
+                        </span>
+                     </div>
+
+                     <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="p-2 rounded-lg hover:bg-white/50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-brand-primary"
+                     >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                     </button>
+                  </div>
+               </div>
+            )}
          </GlassCard>
 
          {/* --- DETAIL MODAL --- */}
