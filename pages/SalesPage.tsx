@@ -207,120 +207,186 @@ export const SalesPage = () => {
    };
 
    // --- PDF EXPORT LOGIC ---
-   const handleExportPDF = () => {
+   const handleExportPDF = async () => {
       const doc = new jsPDF();
       const primaryColor: [number, number, number] = [139, 92, 246]; // Violet Brand
       const grayColor = [100, 116, 139];
+      const margin = 14;
+      const pageWidth = doc.internal.pageSize.width;
 
-      // 1. Header
+      // --- HEADER ---
+      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+
+      // 1. Logo (Left)
+      try {
+         const logoUrl = "https://zznzarpbntmvymtfapwx.supabase.co/storage/v1/object/public/branding/Logo%20DAEZKT%20rectangular%20blanco.png";
+         const img = new Image();
+         img.crossOrigin = "Anonymous";
+         img.src = logoUrl;
+         await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+         });
+         doc.addImage(img, 'PNG', margin, 12, 40, 13);
+      } catch (error) {
+         console.warn("Could not load logo for PDF", error);
+      }
+
+      // 2. Center Text
+      doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(22);
-      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.text("Tienda Anechka - Reporte de Ventas", 14, 20);
+      doc.setFontSize(16);
+      doc.text("Tienda DAEZKT", pageWidth / 2, 18, { align: 'center' });
 
-      doc.setFontSize(10);
-      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
       doc.setFont("helvetica", "normal");
-      doc.text(`Generado el: ${new Date().toLocaleString()}`, 14, 28);
+      doc.setFontSize(10);
+      doc.setTextColor(224, 231, 255);
+      doc.text("Reporte de Ventas", pageWidth / 2, 25, { align: 'center' });
 
-      // 2. Context (Filters)
-      let filterText = "Filtro Aplicado: ";
+      // 3. Right Info
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Generado el: ${new Date().toLocaleString()}`, pageWidth - margin, 18, { align: 'right' });
+
+      // Filter Text Logic
+      let filterText = "Filtro: Histórico Completo";
       const activeFilters = [];
-      if (dateRange.start || dateRange.end) activeFilters.push(`Período: ${dateRange.start || 'Inicio'} a ${dateRange.end || 'Hoy'}`);
-      if (searchCustomer) activeFilters.push(`Cliente: "${searchCustomer}"`);
-      if (searchMethod) activeFilters.push(`Método: "${searchMethod}"`);
+      if (dateRange.start || dateRange.end) activeFilters.push(`${dateRange.start || '?'} a ${dateRange.end || '?'}`);
+      if (searchCustomer) activeFilters.push(`Cli: ${searchCustomer}`);
+      if (searchMethod) activeFilters.push(`Met: ${searchMethod}`);
+      if (activeFilters.length > 0) filterText = `Filtro: ${activeFilters.join(" | ")}`;
 
-      filterText += activeFilters.length > 0 ? activeFilters.join(" | ") : "Histórico Completo";
+      doc.setFont("helvetica", "normal");
+      doc.text(filterText, pageWidth - margin, 24, { align: 'right' });
 
-      doc.text(filterText, 14, 34);
 
-      // 3. Financial Summary (KPIs) Box
+      // --- BODY ---
+      let currentY = 50;
+
+      // 4. Financial Summary (KPIs) Box
       doc.setDrawColor(220, 220, 220);
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(14, 40, 182, 24, 3, 3, 'FD');
+      doc.setFillColor(248, 250, 252); // Slate 50
+      doc.roundedRect(margin, currentY, pageWidth - (margin * 2), 24, 3, 3, 'FD');
 
       doc.setFontSize(10);
       doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
-      doc.text("Ventas Totales", 20, 48);
-      doc.text("Transacciones", 90, 48);
-      doc.text("Ticket Promedio", 150, 48);
+      doc.text("Ventas Totales", margin + 6, currentY + 8);
+      doc.text("Transacciones", margin + 70, currentY + 8);
+      doc.text("Ticket Promedio", margin + 130, currentY + 8);
 
       doc.setFontSize(16);
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "bold");
-      doc.text(`$${stats.totalSales.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 20, 58);
-      doc.text(`${stats.count}`, 90, 58);
-      doc.text(`$${stats.avgTicket.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 150, 58);
+      doc.text(`$${stats.totalSales.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + 6, currentY + 18);
+      doc.text(`${stats.count}`, margin + 70, currentY + 18);
+      doc.text(`$${stats.avgTicket.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + 130, currentY + 18);
 
-      // 4. Analysis by Method (Small Table)
-      let finalY = 70;
+      currentY += 35;
 
+      // 5. Top 3 Clientes (NEW)
       doc.setFontSize(12);
-      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.text("Desglose por Método de Pago", 14, finalY);
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]); // Violet
+      doc.text("Top 3 Mejores Clientes", margin, currentY);
+
+      const topClientData = stats.topCustomers.map((c, i) => [
+         `${i + 1}. ${c.name}`,
+         `${c.count} compras`,
+         `$${c.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+      ]);
+
+      if (topClientData.length === 0) {
+         topClientData.push(['No hay datos', '-', '-']);
+      }
+
+      autoTable(doc, {
+         startY: currentY + 5,
+         head: [['Cliente', 'Frecuencia', 'Total Comprado']],
+         body: topClientData,
+         theme: 'grid',
+         headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 9, fontStyle: 'bold' },
+         bodyStyles: { fontSize: 9 },
+         columnStyles: {
+            2: { halign: 'right', fontStyle: 'bold' }
+         },
+         margin: { left: margin, right: pageWidth / 2 } // Half width table
+      });
+
+      // 6. Analysis by Method (Small Table) - Right side of Top Clients?
+      // Or below? Let's put it next to Top Clients to save space if it fits, or below.
+      // AutoTable doesn't easily let us go "back up" without manual Y mgmt.
+      // Let's put it parallel if possible.
+
+      // Calculate Y for next table based on Top Clients table height
+      // @ts-ignore
+      let topClientsEndY = doc.lastAutoTable.finalY;
+
+      // Let's try to put Methods table at the same startY but right half
+      doc.text("Desglose por Método", pageWidth / 2 + 5, currentY);
 
       const methodData = Object.entries(stats.byMethod).map(([method, total]) => [
          method,
-         `$${(total as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
-         `${stats.totalSales > 0 ? (((total as number) / stats.totalSales) * 100).toFixed(1) : '0.0'}%`
+         `$${(total as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
       ]);
 
       autoTable(doc, {
-         startY: finalY + 5,
-         head: [['Método / Canal', 'Monto Total', '% Participación']],
+         startY: currentY + 5,
+         head: [['Método', 'Monto Total']],
          body: methodData,
          theme: 'grid',
-         headStyles: { fillColor: [243, 244, 246], textColor: [50, 50, 50], fontSize: 9 },
+         headStyles: { fillColor: [55, 65, 81], textColor: 255, fontSize: 9, fontStyle: 'bold' }, // Dark gray header for secondary table
          bodyStyles: { fontSize: 9 },
          columnStyles: {
-            0: { cellWidth: 100 },
-            1: { cellWidth: 40, halign: 'right' },
-            2: { cellWidth: 40, halign: 'right' }
+            1: { halign: 'right' }
          },
-         margin: { left: 14, right: 14 }
+         margin: { left: pageWidth / 2 + 5, right: margin }
       });
 
       // @ts-ignore
-      finalY = doc.lastAutoTable.finalY + 15;
+      const methodsEndY = doc.lastAutoTable.finalY;
 
-      // 5. Detailed Transactions Table
+      // Update currentY to the max of both
+      currentY = Math.max(topClientsEndY, methodsEndY) + 15;
+
+      // 7. Detailed Transactions Table
       doc.setFontSize(12);
       doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.text("Detalle de Transacciones", 14, finalY);
+      doc.text("Detalle de Transacciones", margin, currentY);
 
       const tableRows = filteredSales.map(sale => [
-         sale.id,
+         sale.id.substring(0, 8) + '...', // Truncate ID
          new Date(sale.created_at).toLocaleDateString() + ' ' + new Date(sale.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
          sale.customer_name || 'Consumidor Final',
-         cleanSnapshot(sale.payment_method_snapshot || 'N/A'), // USE HELPER HERE
+         cleanSnapshot(sale.payment_method_snapshot || 'N/A'),
          `$${sale.total_amount.toFixed(2)}`,
-         sale.status
+         sale.status === 'COMPLETED' ? 'OK' : sale.status
       ]);
 
       autoTable(doc, {
-         startY: finalY + 5,
-         head: [['Ticket ID', 'Fecha', 'Cliente', 'Detalle Pagos', 'Total', 'Estado']],
+         startY: currentY + 5,
+         head: [['Ticket', 'Fecha', 'Cliente', 'Detalle Pagos', 'Total', 'Est']],
          body: tableRows,
          theme: 'striped',
-         headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 8 },
+         headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 8, fontStyle: 'bold' },
          bodyStyles: { fontSize: 8 },
          columnStyles: {
             0: { cellWidth: 25 },
             1: { cellWidth: 30 },
-            2: { cellWidth: 40 },
-            3: { cellWidth: 'auto' },
-            4: { cellWidth: 25, halign: 'right', fontStyle: 'bold' },
-            5: { cellWidth: 20, halign: 'center' }
+            4: { halign: 'right', fontStyle: 'bold' },
+            5: { halign: 'center' }
          },
-         margin: { left: 14, right: 14 }
+         margin: { left: margin, right: margin }
       });
 
+      // Footer pagination
       const pageCount = doc.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
          doc.setPage(i);
          doc.setFontSize(8);
          doc.setTextColor(150);
-         doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 10, { align: 'right' });
+         doc.text(`Página ${i} de ${pageCount}`, pageWidth - margin, doc.internal.pageSize.height - 10, { align: 'right' });
+         doc.text(`DAEZKT POS System`, margin, doc.internal.pageSize.height - 10, { align: 'left' });
       }
 
       doc.save(`Reporte_Ventas_${new Date().toISOString().split('T')[0]}.pdf`);

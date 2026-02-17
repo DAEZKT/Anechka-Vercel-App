@@ -255,7 +255,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
 
    // --- PDF GENERATION ---
-   const generateExecutiveReport = () => {
+   const generateExecutiveReport = async () => {
       const doc = new jsPDF();
       const violet = [139, 92, 246];
       const darkText = [31, 41, 55];
@@ -265,30 +265,63 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       doc.setFillColor(violet[0], violet[1], violet[2]);
       doc.rect(0, 0, 210, 5, 'F');
 
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(22);
-      doc.setTextColor(darkText[0], darkText[1], darkText[2]);
-      doc.text("Reporte Ejecutivo Empresarial", 14, 25);
+      // 1. Logo (Top Left)
+      try {
+         const logoUrl = "https://zznzarpbntmvymtfapwx.supabase.co/storage/v1/object/public/branding/Logo%20DAEZKT%20rectangular%20negro.png";
+         const img = new Image();
+         img.crossOrigin = "Anonymous";
+         img.src = logoUrl;
+         await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+         });
+         // Adjusted dimensions to be less "stretched/narrow" - wider and slightly taller proportion
+         doc.addImage(img, 'PNG', 14, 10, 45, 15);
+      } catch (error) {
+         console.warn("Could not load logo for PDF", error);
+      }
 
+      // 2. Info (Top Right - Aligned with Logo row)
       doc.setFontSize(10);
       doc.setTextColor(lightText[0], lightText[1], lightText[2]);
       doc.setFont("helvetica", "normal");
-      doc.text("Tienda Anechka - POS & ERP System", 14, 31);
-      doc.text(`Periodo Analizado: ${dateRange.start} al ${dateRange.end}`, 14, 36);
 
       const today = new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
-      doc.text(`Generado: ${today}`, 196, 25, { align: 'right' });
-      doc.text(`Usuario: ${user?.full_name || 'Sistema'}`, 196, 31, { align: 'right' });
+      doc.text(`Generado: ${today}`, 196, 15, { align: 'right' });
+      doc.text(`Usuario: ${user?.full_name || 'Sistema'}`, 196, 20, { align: 'right' });
+
+      // 3. Centered Title Block (Below Logo/Info)
+      let y = 40;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(darkText[0], darkText[1], darkText[2]);
+      doc.text("Reporte Ejecutivo Empresarial", 105, y, { align: 'center' }); // Centered
+
+      y += 7;
+      doc.setFontSize(12);
+      doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+      doc.setFont("helvetica", "normal");
+      doc.text("DAEZKT - POS & ERP System", 105, y, { align: 'center' });
+
+      y += 6;
+      doc.text(`Periodo Analizado: ${dateRange.start} al ${dateRange.end}`, 105, y, { align: 'center' });
+
+
+      // Common Table Styles
+      const commonHeadStyles = {
+         fillColor: [139, 92, 246] as [number, number, number], // Violet
+         textColor: [255, 255, 255] as [number, number, number],
+         fontStyle: 'bold' as const
+      };
 
       // --- FINANCIAL SUMMARY ---
-      let y = 45;
+      y += 20;
       doc.setFontSize(14);
       doc.setTextColor(violet[0], violet[1], violet[2]);
       doc.setFont("helvetica", "bold");
       doc.text("1. Resumen Financiero", 14, y);
 
-      y += 10;
-      // Draw simple KPI table
+      y += 5;
       autoTable(doc, {
          startY: y,
          head: [['Concepto', 'Monto', 'Indicador']],
@@ -298,7 +331,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             ['Utilidad Neta', `$${financials.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, `${financials.margin.toFixed(1)}%`],
          ],
          theme: 'grid',
-         headStyles: { fillColor: [243, 244, 246], textColor: [31, 41, 55], fontStyle: 'bold' },
+         headStyles: commonHeadStyles,
          columnStyles: {
             1: { halign: 'right', fontStyle: 'bold' },
             2: { halign: 'center', fontSize: 8 }
@@ -310,6 +343,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       y = doc.lastAutoTable.finalY + 15;
 
       // --- CATEGORY ANALYSIS ---
+      // check if page break needed
+      if (y > 250) { doc.addPage(); y = 20; }
+
       doc.setFontSize(14);
       doc.setTextColor(violet[0], violet[1], violet[2]);
       doc.text("2. Ventas por Categoría", 14, y);
@@ -324,7 +360,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             `${(financials.revenue > 0 ? (c.value / financials.revenue) * 100 : 0).toFixed(1)}%`
          ]),
          theme: 'striped',
-         headStyles: { fillColor: [249, 250, 251], textColor: [55, 65, 81] },
+         headStyles: commonHeadStyles,
          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'center' } },
          styles: { fontSize: 9 }
       });
@@ -333,6 +369,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       y = doc.lastAutoTable.finalY + 15;
 
       // --- PAYMENT METHODS ---
+      if (y > 250) { doc.addPage(); y = 20; }
+
       doc.setFontSize(14);
       doc.setTextColor(violet[0], violet[1], violet[2]);
       doc.text("3. Métodos de Pago", 14, y);
@@ -346,8 +384,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             `$${p.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
             `${(financials.revenue > 0 ? (p.value / financials.revenue) * 100 : 0).toFixed(1)}%`
          ]),
-         theme: 'plain',
-         headStyles: { fillColor: [255, 255, 255], textColor: [55, 65, 81], lineColor: [200, 200, 200], lineWidth: { bottom: 0.1 } },
+         theme: 'plain', // Keeping plain theme but overriding header
+         headStyles: commonHeadStyles,
          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'center' } },
          styles: { fontSize: 9 }
       });
@@ -356,6 +394,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       y = doc.lastAutoTable.finalY + 15;
 
       // --- TOP PRODUCTS ---
+      if (y > 250) { doc.addPage(); y = 20; }
+
       doc.setFontSize(14);
       doc.setTextColor(violet[0], violet[1], violet[2]);
       doc.text("4. Top 5 Productos", 14, y);
@@ -369,8 +409,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             p.qty,
             `$${p.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
          ]),
-         // ... styles
+         theme: 'striped',
+         headStyles: commonHeadStyles,
+         columnStyles: { 2: { halign: 'right' } },
       });
+
+      // @ts-ignore
+      y = doc.lastAutoTable.finalY + 15;
+
+      // --- STOCK ALERTS ---
+      if (y > 250) { doc.addPage(); y = 20; }
+
+      doc.setFontSize(14);
+      doc.setTextColor(violet[0], violet[1], violet[2]); // Or Red? User said "Identidad", usually good to keep main headers consistent, but content can be alerted.
+      // Let's keep the section header Violet for consistency, but maybe the table can highlight low stock?
+      doc.text("5. Alertas de Stock (Crítico)", 14, y);
+      y += 5;
+
+      if (lowStockItems.length > 0) {
+         autoTable(doc, {
+            startY: y,
+            head: [['Producto', 'Stock Actual', 'Mínimo']],
+            body: lowStockItems.map(p => [
+               p.name,
+               p.stock_level,
+               p.min_stock
+            ]),
+            theme: 'striped',
+            headStyles: commonHeadStyles,
+            columnStyles: {
+               1: { halign: 'center', textColor: [220, 38, 38], fontStyle: 'bold' }, // Red stock count
+               2: { halign: 'center' }
+            },
+         });
+      } else {
+         doc.setFontSize(10);
+         doc.setTextColor(34, 197, 94); // Green
+         doc.text("¡Inventario Saludable! No hay productos bajo mínimo.", 14, y + 10);
+      }
 
       // Save
       doc.save(`Reporte_Ejecutivo_${dateRange.start}_${dateRange.end}.pdf`);

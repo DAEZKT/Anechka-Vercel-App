@@ -256,7 +256,7 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
    // Explicit calculation for Balance Total based on user request
    const balanceTotal = metrics.theoreticalCash + metrics.digitalSales;
 
-   const generateCloseReport = () => {
+   const generateCloseReport = async () => {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.width;
       const pageHeight = doc.internal.pageSize.height;
@@ -288,22 +288,42 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
 
       // --- HERO HEADER ---
       doc.setFillColor(brandColor[0], brandColor[1], brandColor[2]);
-      doc.rect(0, 0, pageWidth, 40, 'F');
+      doc.rect(0, 0, pageWidth, 35, 'F'); // Compact height
 
+      // 1. Logo (White) - Top Left
+      try {
+         const logoUrl = "https://zznzarpbntmvymtfapwx.supabase.co/storage/v1/object/public/branding/Logo%20DAEZKT%20rectangular%20blanco.png";
+         const img = new Image();
+         img.crossOrigin = "Anonymous";
+         img.src = logoUrl;
+         await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+         });
+         doc.addImage(img, 'PNG', margin, 8, 40, 13);
+      } catch (error) {
+         console.warn("Could not load logo for PDF", error);
+      }
+
+      // 2. Info - Top Right (Smaller)
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(20);
+      doc.setFontSize(6);
       doc.setFont('helvetica', 'bold');
-      doc.text("REPORTE DE CIERRE", margin, 20);
-
-      doc.setFontSize(10);
+      doc.text(`GENERADO POR: ${user.full_name.toUpperCase()}`, pageWidth - margin, 12, { align: 'right' });
       doc.setFont('helvetica', 'normal');
-      doc.text(`ANECKA POS  •  ${selectedDate}`, margin, 28);
+      doc.text(`FECHA IMPRESIÓN: ${new Date().toLocaleString()}`, pageWidth - margin, 16, { align: 'right' });
 
-      doc.setFontSize(8);
-      doc.text(`GENERADO POR: ${user.full_name.toUpperCase()}`, pageWidth - margin, 18, { align: 'right' });
-      doc.text(`FECHA IMPRESIÓN: ${new Date().toLocaleString()}`, pageWidth - margin, 26, { align: 'right' });
+      // 3. Title - Center (Aligned in same row)
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text("REPORTE DE CIERRE", pageWidth / 2, 14, { align: 'center' });
 
-      let currentY = 50;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(224, 231, 255); // Lighter Indigo
+      doc.text(`DAEZKT POS  •  ${selectedDate}`, pageWidth / 2, 19, { align: 'center' });
+
+      let currentY = 45;
 
       // --- FINANCIAL HIGHLIGHTS ---
       // A Row of 3 Cards
@@ -320,7 +340,7 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
 
       currentY += 35;
 
-      // --- DETAILED BREAKDOWN SECTION ---
+      // --- RESUMEN OPERACIONES (TEXT) ---
       doc.setFontSize(11);
       doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'bold');
@@ -332,7 +352,6 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
 
       currentY += 12;
 
-      // Manually drawing a summary table for better control than autoTable for this specific part
       const summaryData = [
          ['(+) Ventas Totales', metrics.totalSales],
          ['(+) Ingresos Efectivo', metrics.cashSales],
@@ -349,14 +368,106 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
 
          const val = row[1] as number;
          const valStr = `$${val.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-         // Align right
+         // Align right (manually for this small block)
          doc.text(valStr, pageWidth / 2, y, { align: 'right' });
       });
 
       // --- AUTO TABLES ---
 
-      // 1. Sales by Seller (Right side of Summary? No, below is safer for PDF flow)
+      // Helper for common table style
+      const tableHeadStyles = { fillColor: brandColor, textColor: 255, fontSize: 8, fontStyle: 'bold' as const };
+      const tableStyles = { fontSize: 8, cellPadding: 3 };
+
+      // 1. Resumen por Categoría (NEW)
+      // Placed to the right of the text summary to save space? Or below? 
+      // Let's put it below to keep flow simple.
       currentY += 35;
+
+      doc.setFontSize(10);
+      doc.setTextColor(brandColor[0], brandColor[1], brandColor[2]);
+      doc.text("RESUMEN POR CATEGORÍA", margin, currentY);
+      currentY += 5;
+
+      autoTable(doc, {
+         startY: currentY,
+         head: [['CATEGORÍA', 'TOTAL']],
+         body: [
+            ['EFECTIVO', `$${categoryBreakdown.CASH.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+            ['TRANSFERENCIAS', `$${categoryBreakdown.TRANSFER.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+            ['TARJETAS', `$${categoryBreakdown.CARD.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+            ['OTROS', `$${categoryBreakdown.OTHER.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+         ],
+         theme: 'striped',
+         headStyles: tableHeadStyles,
+         styles: tableStyles,
+         columnStyles: { 1: { halign: 'right' } },
+         margin: { left: margin, right: margin }
+      });
+      // @ts-ignore
+      currentY = doc.lastAutoTable.finalY + 15;
+
+      // 2. Auditoría Transferencias (NEW)
+      doc.setFontSize(10);
+      doc.setTextColor(brandColor[0], brandColor[1], brandColor[2]);
+      doc.text("AUDITORÍA DE TRANSFERENCIAS / DIGITAL", margin, currentY);
+      currentY += 5;
+
+      if (transfersDetail.length > 0) {
+         autoTable(doc, {
+            startY: currentY,
+            head: [['REF / TIPO', 'MÉTODO', 'MONTO']],
+            body: transfersDetail.map(t => [
+               `${t.type} - ${t.ref}`,
+               t.method,
+               `$${t.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+            ]),
+            theme: 'striped',
+            headStyles: tableHeadStyles,
+            styles: tableStyles,
+            columnStyles: { 2: { halign: 'right' } },
+            margin: { left: margin, right: margin }
+         });
+         // @ts-ignore
+         currentY = doc.lastAutoTable.finalY + 15;
+      } else {
+         doc.setFontSize(9);
+         doc.setTextColor(150);
+         doc.text("No hubo transacciones digitales.", margin, currentY + 5);
+         currentY += 15;
+      }
+
+      // 3. Top Productos (NEW)
+      if (currentY > pageHeight - 60) { doc.addPage(); currentY = 20; }
+      doc.setFontSize(10);
+      doc.setTextColor(brandColor[0], brandColor[1], brandColor[2]);
+      doc.text("TOP PRODUCTOS VENDIDOS", margin, currentY);
+      currentY += 5;
+
+      autoTable(doc, {
+         startY: currentY,
+         head: [['PRODUCTO', 'CANT.', 'TOTAL']],
+         body: productVelocity.slice(0, 10).map(p => [ // Top 10
+            p.name,
+            p.qty,
+            `$${p.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+         ]),
+         theme: 'striped',
+         headStyles: tableHeadStyles,
+         styles: tableStyles,
+         columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' } },
+         margin: { left: margin, right: margin }
+      });
+      // @ts-ignore
+      currentY = doc.lastAutoTable.finalY + 15;
+
+
+      // 4. Sales by Seller (Existing)
+      if (currentY > pageHeight - 60) { doc.addPage(); currentY = 20; }
+
+      doc.setFontSize(10);
+      doc.setTextColor(brandColor[0], brandColor[1], brandColor[2]);
+      doc.text("DESEMPEÑO DE VENDEDORES", margin, currentY);
+      currentY += 5;
 
       autoTable(doc, {
          startY: currentY,
@@ -367,38 +478,18 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
             `$${s.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
          ]),
          theme: 'grid',
-         headStyles: { fillColor: brandColor, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-         styles: { fontSize: 8, cellPadding: 3 },
+         headStyles: tableHeadStyles,
+         styles: tableStyles,
          columnStyles: { 2: { halign: 'right' } },
-         margin: { left: margin, right: margin }
-      });
-
-      // @ts-ignore
-      currentY = doc.lastAutoTable.finalY + 10;
-
-      // 2. Payment Methods Summary
-      doc.setFontSize(10);
-      doc.setTextColor(brandColor[0], brandColor[1], brandColor[2]);
-      doc.text("DESGLOSE DE PAGOS", margin, currentY);
-      currentY += 5;
-
-      const paymentRows = Object.entries(methodBreakdown).map(([m, a]) => [m, `$${(a as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}`]);
-
-      autoTable(doc, {
-         startY: currentY,
-         head: [['MÉTODO', 'MONTO']],
-         body: paymentRows,
-         theme: 'striped',
-         headStyles: { fillColor: [55, 65, 81], textColor: 255, fontSize: 8 },
-         styles: { fontSize: 8 },
-         columnStyles: { 1: { halign: 'right' } },
          margin: { left: margin, right: margin }
       });
 
       // @ts-ignore
       currentY = doc.lastAutoTable.finalY + 15;
 
-      // 3. Expenses
+      // 5. Expenses (Existing)
+      if (currentY > pageHeight - 60) { doc.addPage(); currentY = 20; }
+
       doc.setFontSize(10);
       doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
       doc.text("EGRESOS Y ABONOS (FONDO DE CAJA)", margin, currentY);
@@ -421,7 +512,7 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
             body: expenseRows,
             theme: 'striped',
             headStyles: { fillColor: dangerColor, textColor: 255, fontSize: 8 },
-            styles: { fontSize: 8 },
+            styles: tableStyles,
             columnStyles: { 2: { halign: 'right' } },
             margin: { left: margin, right: margin }
          });
@@ -430,6 +521,8 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
       }
 
       // --- SIGNATURE FOOTER ---
+      // Fix potential page overflow for signatures
+      if (currentY > pageHeight - 40) { doc.addPage(); }
       const footerY = pageHeight - 30;
 
       doc.setDrawColor(200);
@@ -450,7 +543,7 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
       doc.rect(0, pageHeight - 12, pageWidth, 12, 'F');
       doc.setFontSize(7);
       doc.setTextColor(150);
-      doc.text("Documento generado automáticamente por Anechka POS.", margin, pageHeight - 5);
+      doc.text("Documento generado automáticamente por DAEZKT POS.", margin, pageHeight - 5);
       doc.text(`${new Date().getFullYear()} © Todos los derechos reservados.`, pageWidth - margin, pageHeight - 5, { align: 'right' });
 
       doc.save(`Cierre_Total_${selectedDate}.pdf`);
