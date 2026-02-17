@@ -676,7 +676,7 @@ export const POS: React.FC<POSProps> = ({ user }) => {
             </div>
           </GlassCard>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto pr-2 pb-24 lg:pb-0 scrollbar-hide z-0">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto pr-2 pb-24 lg:pb-0 custom-scrollbar z-0">
             {filteredProducts.length === 0 ? (
               <div className="col-span-full flex flex-col items-center justify-center py-12 text-gray-400 opacity-60">
                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
@@ -781,7 +781,7 @@ export const POS: React.FC<POSProps> = ({ user }) => {
                         <div className="fixed inset-0 z-20" onClick={() => setShowCustomerResults(false)} />
 
                         <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl border border-gray-100 rounded-xl shadow-2xl p-1 animate-fade-in-down z-30 overflow-hidden">
-                          <div className="max-h-60 overflow-y-auto scrollbar-thin">
+                          <div className="max-h-60 overflow-y-auto custom-scrollbar">
                             {filteredCustomers.length > 0 ? (
                               filteredCustomers.map(c => (
                                 <div
@@ -818,7 +818,7 @@ export const POS: React.FC<POSProps> = ({ user }) => {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1" onClick={() => setShowCustomerResults(false)}>
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar" onClick={() => setShowCustomerResults(false)}>
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
                   <span className="text-4xl mb-2">🛒</span>

@@ -147,7 +147,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-2 scrollbar-hide">
+        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-2 custom-scrollbar">
           {checkAccess('dashboard') && (
             <NavButton active={currentPage === 'dashboard'} onClick={() => handleMobileNavigate('dashboard')} icon={Icons.Dashboard} label="Dashboard" />
           )}

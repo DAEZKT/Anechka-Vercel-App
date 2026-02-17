@@ -59,6 +59,7 @@ export const SalesPage = () => {
       count: 0,
       avgTicket: 0,
       byMethod: {} as Record<string, number>,
+      byMethodGrouped: {} as Record<string, Record<string, number>>,
       topCustomers: [] as { name: string, count: number, total: number }[]
    });
 
@@ -143,7 +144,15 @@ export const SalesPage = () => {
    const calculateStats = (data: SaleHeader[]) => {
       let total = 0;
       let methodStats: Record<string, number> = {};
+      let methodStatsGrouped: Record<string, Record<string, number>> = {};
       let customerStats: Record<string, { count: number, total: number }> = {};
+
+      const TYPE_LABELS: Record<string, string> = {
+         'CASH': 'Efectivo',
+         'CARD': 'Tarjeta / POS',
+         'TRANSFER': 'Transferencia',
+         'OTHER': 'Otros'
+      };
 
       data.forEach(sale => {
          total += sale.total_amount || 0;
@@ -155,7 +164,8 @@ export const SalesPage = () => {
             parts.forEach(part => {
                const [rawMethodName, amountStr] = part.split(': ');
                if (rawMethodName) {
-                  const cleanMethod = cleanMethodName(rawMethodName.trim());
+                  const rawTrimmed = rawMethodName.trim();
+                  const cleanMethod = cleanMethodName(rawTrimmed);
 
                   let amount = 0;
                   if (amountStr) {
@@ -167,6 +177,27 @@ export const SalesPage = () => {
 
                   if (!isNaN(amount)) {
                      methodStats[cleanMethod] = (methodStats[cleanMethod] || 0) + amount;
+
+                     // --- GROUPING LOGIC ---
+                     let typeKey = 'OTHER';
+                     let name = cleanMethod;
+
+                     if (rawTrimmed.includes('|')) {
+                        const p = rawTrimmed.split('|');
+                        typeKey = p[0].trim();
+                        name = p[1].trim();
+                     } else {
+                        // Attempt to infer type from legacy data
+                        const lower = cleanMethod.toLowerCase();
+                        if (lower.includes('efectivo') || lower.includes('caja')) typeKey = 'CASH';
+                        else if (lower.includes('tarjeta') || lower.includes('pos') || lower.includes('visa') || lower.includes('mastercard')) typeKey = 'CARD';
+                        else if (lower.includes('transfer') || lower.includes('banco') || lower.includes('bac') || lower.includes('lafise') || lower.includes('banpro')) typeKey = 'TRANSFER';
+                     }
+
+                     const typeLabel = TYPE_LABELS[typeKey] || typeKey;
+
+                     if (!methodStatsGrouped[typeLabel]) methodStatsGrouped[typeLabel] = {};
+                     methodStatsGrouped[typeLabel][name] = (methodStatsGrouped[typeLabel][name] || 0) + amount;
                   }
                }
             });
@@ -188,6 +219,7 @@ export const SalesPage = () => {
          count: data.length,
          avgTicket: data.length > 0 ? total / data.length : 0,
          byMethod: methodStats,
+         byMethodGrouped: methodStatsGrouped,
          topCustomers: sortedCustomers
       });
    };
@@ -325,18 +357,34 @@ export const SalesPage = () => {
       // Let's try to put Methods table at the same startY but right half
       doc.text("Desglose por Método", pageWidth / 2 + 5, currentY);
 
-      const methodData = Object.entries(stats.byMethod).map(([method, total]) => [
-         method,
-         `$${(total as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-      ]);
+      // --- GROUPED DATA PREP ---
+      const methodData: any[] = [];
+      Object.entries(stats.byMethodGrouped).forEach(([type, methods]) => {
+         const typeTotal = Object.values(methods).reduce((a, b) => a + b, 0);
+         // Header Row: Type
+         methodData.push([
+            { content: type.toUpperCase(), styles: { fontStyle: 'bold', fillColor: [240, 244, 255], textColor: [30, 64, 175] } },
+            { content: `$${typeTotal.toLocaleString(undefined, { minimumFractionDigits: 0 })}`, styles: { fontStyle: 'bold', fillColor: [240, 244, 255], textColor: [30, 64, 175] } }
+         ]);
+
+         // Items
+         Object.entries(methods).forEach(([name, amount]) => {
+            methodData.push([
+               `   ${name}`,
+               `$${(amount as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+            ]);
+         });
+      });
+
+      if (methodData.length === 0) methodData.push(['No hay datos', '-']);
 
       autoTable(doc, {
          startY: currentY + 5,
          head: [['Método', 'Monto Total']],
          body: methodData,
          theme: 'grid',
-         headStyles: { fillColor: [55, 65, 81], textColor: 255, fontSize: 9, fontStyle: 'bold' }, // Dark gray header for secondary table
-         bodyStyles: { fontSize: 9 },
+         headStyles: { fillColor: [55, 65, 81], textColor: 255, fontSize: 9, fontStyle: 'bold' }, // Dark gray header
+         bodyStyles: { fontSize: 8 },
          columnStyles: {
             1: { halign: 'right' }
          },
@@ -568,22 +616,39 @@ export const SalesPage = () => {
 
             <GlassCard className="flex flex-col">
                <span className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Ventas por Método</span>
-               <div className="flex-1 space-y-2 overflow-y-auto max-h-32 pr-2 scrollbar-thin">
-                  {Object.entries(stats.byMethod).map(([method, amount]) => (
-                     <div key={method} className="flex items-center justify-between text-sm">
-                        <span className="text-gray-700 font-medium truncate max-w-[120px]" title={method}>{method}</span>
-                        <div className="flex items-center gap-2">
-                           <div className="h-2 bg-gray-200 rounded-full w-16 overflow-hidden">
-                              <div
-                                 className="h-full bg-brand-accent"
-                                 style={{ width: `${stats.totalSales > 0 ? ((amount as number) / stats.totalSales) * 100 : 0}%` }}
-                              />
+               <div className="flex-1 space-y-2 overflow-y-auto max-h-48 pr-2 scrollbar-thin">
+                  {/* GROUPED DISPLAY */}
+                  {Object.keys(stats.byMethodGrouped).length > 0 ? (
+                     Object.entries(stats.byMethodGrouped).map(([type, methods]) => {
+                        const typeTotal = Object.values(methods).reduce((a, b) => a + b, 0);
+                        return (
+                           <div key={type} className="mb-3 last:mb-0">
+                              <div className="flex justify-between items-center mb-1 sticky top-0 bg-white/80 backdrop-blur-sm z-10">
+                                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{type}</span>
+                                 <span className="text-[10px] font-bold text-gray-600">${typeTotal.toFixed(0)}</span>
+                              </div>
+                              <div className="space-y-1.5 pl-2 border-l-2 border-brand-primary/10">
+                                 {Object.entries(methods).map(([name, amount]) => (
+                                    <div key={name} className="flex justify-between items-center text-xs group">
+                                       <span className="text-gray-600 truncate max-w-[120px]" title={name}>{name}</span>
+                                       <div className="flex items-center gap-2">
+                                          <div className="h-1.5 bg-gray-100 rounded-full w-12 overflow-hidden">
+                                             <div
+                                                className="h-full bg-brand-accent group-hover:bg-brand-primary transition-colors"
+                                                style={{ width: `${typeTotal > 0 ? (amount / typeTotal) * 100 : 0}%` }}
+                                             />
+                                          </div>
+                                          <span className="font-bold text-gray-800 w-14 text-right">${amount.toFixed(0)}</span>
+                                       </div>
+                                    </div>
+                                 ))}
+                              </div>
                            </div>
-                           <span className="font-bold text-gray-900 w-16 text-right">${(amount as number).toFixed(0)}</span>
-                        </div>
-                     </div>
-                  ))}
-                  {Object.keys(stats.byMethod).length === 0 && <p className="text-xs text-gray-400 italic">No hay datos para esta selección.</p>}
+                        );
+                     })
+                  ) : (
+                     <p className="text-xs text-gray-400 italic">No hay datos para esta selección.</p>
+                  )}
                </div>
             </GlassCard>
 

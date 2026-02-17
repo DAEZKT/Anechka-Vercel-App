@@ -742,7 +742,7 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
                         <p className="text-xs text-blue-400 font-medium italic">No hubo transferencias hoy.</p>
                      </div>
                   ) : (
-                     <div className="max-h-48 overflow-y-auto space-y-2 pr-2 scrollbar-thin">
+                     <div className="max-h-48 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
                         {transfersDetail.map((t, idx) => {
                            // Color coding by type
                            const typeColors = {
