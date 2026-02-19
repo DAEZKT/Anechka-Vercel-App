@@ -34,7 +34,8 @@ const getInitialFormState = () => ({
   sub_account: '',
   total: '',
   payment_type: 'CONTADO' as ExpensePaymentType,
-  image_url: ''
+  image_url: '',
+  description: ''
 });
 
 export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
@@ -65,6 +66,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputEditRef = useRef<HTMLInputElement>(null);
 
   // Custom Dropdown State
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
@@ -85,7 +87,8 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
     sub_account: '',
     total: '',
     payment_type: 'CONTADO' as ExpensePaymentType,
-    image_url: ''
+    image_url: '',
+    description: ''
   });
 
   // Filters State
@@ -95,8 +98,17 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
   // Mobile Action Menu State
   const [activeMenuExpenseId, setActiveMenuExpenseId] = useState<string | null>(null);
 
+  // Receipt Viewer State
+  const [viewReceiptUrl, setViewReceiptUrl] = useState<string | null>(null);
+  const [receiptZoom, setReceiptZoom] = useState(1);
+
+  const handleViewReceipt = (url: string) => {
+    setViewReceiptUrl(url);
+    setReceiptZoom(1); // Reset zoom
+  };
+
   useEffect(() => {
-    console.log("ExpensesPage mounted");
+
     if (!expenseService || !supplierService) {
       console.error("Services undefined!", { expenseService, supplierService });
       alert("Error de sistema: Servicios no cargados correctamente. Por favor recargue la página.");
@@ -197,6 +209,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
         total: parseFloat(formData.total),
         payment_type: formData.payment_type,
         image_url: formData.image_url,
+        description: formData.description,
         user_id: user.id
       });
 
@@ -220,13 +233,14 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
   const handleOpenEdit = (expense: Expense) => {
     setEditingExpense(expense);
     setEditFormData({
-      date: expense.date,
+      date: getBusinessDateString(expense.date),
       supplier: expense.supplier,
       account: expense.account,
       sub_account: expense.sub_account,
       total: expense.total.toString(),
       payment_type: expense.payment_type,
-      image_url: expense.image_url || ''
+      image_url: expense.image_url || '',
+      description: expense.description || ''
     });
     setIsEditModalOpen(true);
   };
@@ -249,7 +263,8 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
         sub_account: editFormData.sub_account,
         total: parseFloat(editFormData.total),
         payment_type: editFormData.payment_type,
-        image_url: editFormData.image_url
+        image_url: editFormData.image_url,
+        description: editFormData.description
       });
 
       if (result.success) {
@@ -396,7 +411,12 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        setFormData(prev => ({ ...prev, image_url: dataUrl }));
+
+        if (isEditModalOpen) {
+          setEditFormData(prev => ({ ...prev, image_url: dataUrl }));
+        } else {
+          setFormData(prev => ({ ...prev, image_url: dataUrl }));
+        }
         setIsCameraOpen(false);
       }
     }
@@ -408,6 +428,17 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, image_url: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleEditFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditFormData(prev => ({ ...prev, image_url: reader.result as string }));
       };
       reader.readAsDataURL(file);
     }
@@ -803,7 +834,11 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
                               {/* View Receipt (if exists) */}
                               {exp.image_url && (
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); window.open(exp.image_url); setActiveMenuExpenseId(null); }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewReceipt(exp.image_url!);
+                                    setActiveMenuExpenseId(null);
+                                  }}
                                   className="flex items-center gap-3 px-3 py-2.5 hover:bg-violet-50 text-gray-600 hover:text-violet-600 rounded-lg transition-colors text-xs font-bold"
                                 >
                                   <div className="p-1.5 bg-violet-100 rounded-md text-violet-600">
@@ -1007,28 +1042,39 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
                     // OnBlur optional handling can be tricky, relying on click outside or selection
                     className="w-full px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-brand-primary outline-none"
                   />
-                  {showSupplierResults && formData.supplier && (
-                    <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-40 overflow-y-auto z-10">
-                      {filteredSuppliers.map(s => (
-                        <div
-                          key={s.id}
-                          onClick={() => {
-                            setFormData(prev => ({ ...prev, supplier: s.name }));
-                            setShowSupplierResults(false);
-                          }}
-                          className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                        >
-                          {s.name}
-                        </div>
-                      ))}
-                      {filteredSuppliers.length === 0 && (
-                        <div className="px-4 py-2 text-gray-400 text-xs italic">Se registrará como nuevo texto: "{formData.supplier}"</div>
-                      )}
-                    </div>
-                  )}
-                  {/* Overlay to close dropdown if clicked outside (simple version) */}
+                  {/* Supplier Dropdown - Updated to show full list on focus with custom scrollbar */}
                   {showSupplierResults && (
-                    <div className="fixed inset-0 z-0" onClick={() => setShowSupplierResults(false)} style={{ display: 'none' }}></div>
+                    <>
+                      {/* Backdrop to close when clicking outside */}
+                      <div className="fixed inset-0 z-10" onClick={() => setShowSupplierResults(false)}></div>
+
+                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-60 overflow-y-auto z-20 custom-scrollbar animate-fade-in">
+                        {filteredSuppliers.length === 0 && formData.supplier ? (
+                          <div className="px-4 py-3 text-gray-500 text-xs italic bg-gray-50">
+                            Se registrará como nuevo: <span className="font-bold">"{formData.supplier}"</span>
+                          </div>
+                        ) : (
+                          <>
+                            {filteredSuppliers.map(s => (
+                              <div
+                                key={s.id}
+                                onClick={() => {
+                                  setFormData(prev => ({ ...prev, supplier: s.name }));
+                                  setShowSupplierResults(false);
+                                }}
+                                className="px-4 py-3 hover:bg-brand-primary/5 hover:text-brand-primary cursor-pointer text-sm border-b border-gray-50 last:border-0 transition-colors flex items-center justify-between group"
+                              >
+                                <span className="font-medium">{s.name}</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-0 group-hover:opacity-100 transition-opacity text-brand-primary"><polyline points="20 6 9 17 4 12" /></svg>
+                              </div>
+                            ))}
+                            {filteredSuppliers.length === 0 && (
+                              <div className="px-4 py-3 text-gray-400 text-xs text-center italic">No hay proveedores registrados aún</div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -1074,7 +1120,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
 
                         {/* Options */}
                         <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
-                          <div className="max-h-60 overflow-y-auto">
+                          <div className="max-h-60 overflow-y-auto custom-scrollbar">
                             {accountOptions.map((acc) => (
                               <button
                                 key={acc.id}
@@ -1153,7 +1199,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
 
                         {/* Options */}
                         <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
-                          <div className="max-h-60 overflow-y-auto">
+                          <div className="max-h-60 overflow-y-auto custom-scrollbar">
                             {activeSubAccounts.map((sub) => (
                               <button
                                 key={sub.id}
@@ -1216,6 +1262,18 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
                       CRÉDITO
                     </button>
                   </div>
+                </div>
+
+                {/* Concepto / Descripción */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Concepto / Descripción</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Detalle adicional del gasto..."
+                    value={formData.description}
+                    onChange={e => setFormData({ ...formData, description: e.target.value })}
+                    className="w-full px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-brand-primary outline-none transition-all resize-none text-sm"
+                  />
                 </div>
               </div>
 
@@ -1371,6 +1429,56 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
                     </button>
                   </div>
                 </div>
+
+                {/* Concepto / Descripción */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Concepto / Descripción</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Detalle adicional..."
+                    value={editFormData.description}
+                    onChange={e => setEditFormData({ ...editFormData, description: e.target.value })}
+                    className="w-full px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Edit Evidence Section */}
+              <div className="border-t border-gray-100 pt-4">
+                <label className="block text-xs font-bold text-gray-500 mb-2">Comprobante / Factura</label>
+
+                {editFormData.image_url ? (
+                  <div className="relative h-40 w-full rounded-lg overflow-hidden border border-gray-200 group">
+                    <img src={editFormData.image_url} alt="Evidence" className="w-full h-full object-contain bg-gray-50" />
+                    <button
+                      type="button"
+                      onClick={() => setEditFormData({ ...editFormData, image_url: '' })}
+                      className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => fileInputEditRef.current?.click()}
+                      className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 transition-colors text-gray-500"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg>
+                      <span className="text-xs font-bold">Subir Archivo</span>
+                      <input ref={fileInputEditRef} type="file" accept="image/*" className="hidden" onChange={handleEditFileUpload} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsCameraOpen(true)}
+                      className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-brand-primary/30 rounded-xl bg-brand-primary/5 hover:bg-brand-primary/10 transition-colors text-brand-primary"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" /></svg>
+                      <span className="text-xs font-bold">Tomar Foto</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-3 justify-end pt-4 border-t border-gray-100">
@@ -1416,6 +1524,78 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
           </div>
         </div>
       )}
+      {/* VIEW RECEIPT MODAL */}
+      {/* VIEW RECEIPT MODAL (ZOOMABLE) */}
+      {viewReceiptUrl && (
+        <div
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 backdrop-blur-xl animate-fade-in"
+          onClick={() => setViewReceiptUrl(null)}
+        >
+          {/* Toolbar */}
+          <div
+            className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex gap-4">
+              <button
+                onClick={() => setReceiptZoom(prev => Math.max(0.5, prev - 0.25))}
+                className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                title="Zoom Out"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+              </button>
+              <button
+                onClick={() => setReceiptZoom(1)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-full text-white font-bold text-sm transition-colors"
+              >
+                {Math.round(receiptZoom * 100)}%
+              </button>
+              <button
+                onClick={() => setReceiptZoom(prev => Math.min(3, prev + 0.25))}
+                className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                title="Zoom In"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setViewReceiptUrl(null)}
+              className="p-2 bg-white/10 hover:bg-red-500/80 rounded-full text-white transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+
+          {/* Image Container with Scroll */}
+          <div
+            className="w-full h-full overflow-auto flex items-center justify-center p-4 scrollbar-hide"
+            onClick={() => setViewReceiptUrl(null)}
+          >
+            {/* 
+                We use a wrapper to allow the image to scale without affecting layout flow abruptly 
+                and to center it when smaller than viewport 
+             */}
+            <div className="relative" onClick={e => e.stopPropagation()}>
+              <img
+                src={viewReceiptUrl}
+                alt="Comprobante"
+                style={{
+                  transform: `scale(${receiptZoom})`,
+                  transformOrigin: 'center center',
+                  transition: 'transform 0.2s ease-out',
+                  maxWidth: '90vw',
+                  maxHeight: '85vh'
+                }}
+                className={`object-contain rounded-lg shadow-2xl bg-white/5 ${receiptZoom > 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                // Allow dragging via standard scrolling
+                draggable={false}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

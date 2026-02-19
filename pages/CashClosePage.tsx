@@ -177,33 +177,19 @@ export const CashClosePage: React.FC<CashClosePageProps> = ({ user }) => {
          // 3. PROCESS EXPENSES (Cash vs Other)
          let outcomeCash = 0;
 
-         console.log('🔍 Debugging Expenses:', {
-            totalExpenses: allExpenses.length,
-            dailyExpenses: dailyExpenses.length,
-            dailyExpensesData: dailyExpenses,
-            dailyPayments: dailyPayments.length
-         });
+
 
          dailyExpenses.forEach(exp => {
-            console.log('💰 Processing expense:', {
-               supplier: exp.supplier,
-               total: exp.total,
-               payment_type: exp.payment_type,
-               date: exp.date
-            });
-
             // Assuming 'CONTADO' implies Cash Drawer outflow. 
             // 'CREDITO' doesn't affect cash flow today (unless paid, but that logic is in payments table)
             if (exp.payment_type === 'CONTADO') {
                outcomeCash += exp.total;
-               console.log('✅ Added to outcomeCash:', exp.total);
             }
          });
 
          // Add Credit Payments to Outflow
          dailyPayments.forEach(pay => {
             outcomeCash += pay.amount;
-            console.log('💳 Added payment to outflow:', pay.amount);
          });
 
          // 4. PROCESS TOP PRODUCTS

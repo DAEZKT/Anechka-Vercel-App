@@ -195,22 +195,22 @@ export const LoginPage: React.FC<LoginProps> = ({ onLogin, onNavigate }) => {
         {/* Glass Card */}
         <div className="relative z-10 w-[450px] bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 p-8 shadow-2xl">
           <div className="flex items-center gap-3 mb-6">
-            <span className="bg-white/20 px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-wider">Admin Panel</span>
-            <span className="text-[10px] text-white/60 font-medium">DAEZKT Cloud</span>
+            <span className="bg-white/20 px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-wider">Versión PRO</span>
+            <span className="text-[10px] text-white/60 font-medium">DAEZKT Enterprise</span>
           </div>
 
-          <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
-            Gestión Comercial de Alto Rendimiento
+          <h2 className="text-4xl font-bold text-white mb-4 leading-tight tracking-tight">
+            Tu Negocio,<br />Bajo Control Total.
           </h2>
 
-          <p className="text-sm text-white/70 mb-8 leading-relaxed">
-            Plataforma centralizada con seguridad de grado empresarial para la protección de datos sensibles y control de inventario en tiempo real.
+          <p className="text-sm text-white/80 mb-8 leading-relaxed">
+            Gestiona ventas, inventario y finanzas en una sola plataforma inteligente. Toma mejores decisiones con reportes en tiempo real y haz crecer tu empresa.
           </p>
 
           <div className="space-y-4">
-            <FeatureRow icon="shield" text="Encriptación de extremo a extremo" />
-            <FeatureRow icon="chart" text="Monitoreo de stock en tiempo real" />
-            <FeatureRow icon="users" text="Gestión segura de personal" />
+            <FeatureRow icon="store" text="Catálogo Digital & Pedidos" />
+            <FeatureRow icon="box" text="Control de Inventario Preciso" />
+            <FeatureRow icon="chart" text="Inteligencia Financiera & Cierres" />
           </div>
         </div>
       </div>
@@ -225,16 +225,18 @@ const FeatureRow = ({ icon, text }: { icon: string; text: string }) => {
       case 'shield': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>;
       case 'chart': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>;
       case 'users': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>;
+      case 'store': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>;
+      case 'box': return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>;
       default: return null;
     }
   };
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-300">
+    <div className="flex items-center gap-3 group cursor-default">
+      <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white group-hover:bg-white/20 group-hover:text-emerald-300 transition-all duration-300 shadow-lg shadow-black/5">
         {getIcon()}
       </div>
-      <span className="text-sm text-white font-medium">{text}</span>
+      <span className="text-sm text-white font-bold group-hover:text-white/90 transition-colors">{text}</span>
     </div>
   );
 };

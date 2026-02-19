@@ -185,6 +185,7 @@ export interface Expense {
   status: ExpenseStatus; // Estado de la deuda
 
   image_url?: string;
+  description?: string;
   user_id: string;
   created_at: string;
 }

@@ -7,7 +7,9 @@ import autoTable from "jspdf-autotable";
 import { getBusinessDateString, toLocalDateString, getLocalDateString } from '../utils/dateUtils';
 import {
    BarChart,
-   Bar,
+   Bar, // Kept for reference or safety, but main chart moves to Area
+   AreaChart,
+   Area,
    XAxis,
    YAxis,
    CartesianGrid,
@@ -527,19 +529,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                <h3 className="font-bold text-lg text-gray-800 mb-4">Tendencia de Ingresos vs Egresos</h3>
                <div className="flex-1 w-full min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
-                     <BarChart data={dailyData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} dy={10} minTickGap={30} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} tickFormatter={(value) => `$${value}`} />
-                        <Tooltip
-                           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                           cursor={{ fill: '#F3F4F6' }}
-                           formatter={(value: any) => [`$${value.toLocaleString()}`, undefined]}
+                     <AreaChart data={dailyData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <defs>
+                           {/* Income Gradient (Brand Violet) */}
+                           <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
+                           </linearGradient>
+                           {/* Expense Gradient (Amber/Orange) */}
+                           <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
+                           </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                        <XAxis
+                           dataKey="date"
+                           axisLine={false}
+                           tickLine={false}
+                           tick={{ fill: '#9CA3AF', fontSize: 11, fontWeight: 500 }}
+                           dy={10}
+                           minTickGap={30}
                         />
-                        <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                        <Bar name="Ingresos" dataKey="income" fill="#8B5CF6" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                        <Bar name="Egresos" dataKey="expense" fill="#F59E0B" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                     </BarChart>
+                        <YAxis
+                           axisLine={false}
+                           tickLine={false}
+                           tick={{ fill: '#9CA3AF', fontSize: 11, fontWeight: 500 }}
+                           tickFormatter={(value) => `$${value}`}
+                        />
+                        <Tooltip
+                           contentStyle={{
+                              borderRadius: '16px',
+                              border: 'none',
+                              boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.05)',
+                              backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                              backdropFilter: 'blur(4px)',
+                              padding: '12px'
+                           }}
+                           cursor={{ stroke: '#E5E7EB', strokeWidth: 1, strokeDasharray: '4 4' }}
+                           formatter={(value: any) => [`$${value.toLocaleString()}`, undefined]}
+                           labelStyle={{ color: '#6B7280', fontWeight: 'bold', marginBottom: '8px' }}
+                        />
+                        <Legend wrapperStyle={{ paddingTop: '20px' }} iconType="circle" />
+
+                        <Area
+                           type="monotone"
+                           name="Ingresos"
+                           dataKey="income"
+                           stroke="#8B5CF6"
+                           strokeWidth={3}
+                           fillOpacity={1}
+                           fill="url(#colorIncome)"
+                           activeDot={{ r: 6, strokeWidth: 0, fill: '#8B5CF6' }}
+                        />
+                        <Area
+                           type="monotone"
+                           name="Egresos"
+                           dataKey="expense"
+                           stroke="#F59E0B"
+                           strokeWidth={3}
+                           fillOpacity={1}
+                           fill="url(#colorExpense)"
+                           activeDot={{ r: 6, strokeWidth: 0, fill: '#F59E0B' }}
+                        />
+                     </AreaChart>
                   </ResponsiveContainer>
                </div>
             </GlassCard>

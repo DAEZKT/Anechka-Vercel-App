@@ -872,7 +872,8 @@ export const expenseService = {
                 users (full_name),
                 payment_methods (name)
             `)
-      .order('date', { ascending: false });
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
 
@@ -898,6 +899,7 @@ export const expenseService = {
     total: number;
     payment_type: 'CONTADO' | 'CREDITO';
     image_url?: string;
+    description?: string;
   }): Promise<{ success: boolean; id?: string }> => {
     // Logic for debt management
     const isCredit = expense.payment_type === 'CREDITO';
@@ -914,7 +916,7 @@ export const expenseService = {
         account: expense.account,       // Maps to Account Type
         sub_account: expense.sub_account, // Maps to SubAccount
         category: expense.account,        // Fallback for legacy
-        description: `${expense.supplier} - ${expense.sub_account}`, // Fallback description
+        description: expense.description || `${expense.supplier} - ${expense.sub_account}`, // Use provided description or fallback
         amount: expense.total,
         payment_type: expense.payment_type,
         status: status,
@@ -1039,6 +1041,7 @@ export const expenseService = {
       total?: number;
       payment_type?: 'CONTADO' | 'CREDITO';
       image_url?: string;
+      description?: string;
     }
   ): Promise<{ success: boolean }> => {
     try {
@@ -1061,9 +1064,10 @@ export const expenseService = {
       if (updates.total !== undefined) updateData.amount = updates.total;
       if (updates.payment_type !== undefined) updateData.payment_type = updates.payment_type;
       if (updates.image_url !== undefined) updateData.image_url = updates.image_url;
+      if (updates.description !== undefined) updateData.description = updates.description;
 
-      // Update description if supplier or sub_account changed
-      if (updates.supplier || updates.sub_account) {
+      // Update description if supplier or sub_account changed AND description wasn't explicitly provided
+      if ((updates.supplier || updates.sub_account) && updates.description === undefined) {
         // Get current expense to build description
         const { data: current } = await supabase
           .from('expenses')

@@ -7,6 +7,7 @@ import { productService, inventoryService, categoryService, auditService, brandS
 import { Product, User, MovementType, ProductGender, Category, InventoryMovementHeader, InventoryMovementDetail, AuditSession, Brand } from '../types';
 import { Html5Qrcode } from 'html5-qrcode';
 import { ScannerModal } from '../components/ScannerModal';
+import CustomSelect from '../components/CustomSelectInventory';
 
 interface InventoryPageProps {
   user: User;
@@ -118,7 +119,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
 
   // Detalle inputs
   const [selectedProductId, setSelectedProductId] = useState('');
-  const [movementSku, setMovementSku] = useState('');
+
   const [qtyInput, setQtyInput] = useState(1);
   const [costInput, setCostInput] = useState(0);
   const [priceInputState, setPriceInput] = useState(0);
@@ -142,6 +143,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
 
   // --- INDEPENDENT SEARCH STATES ---
   const [itemSearchTerm, setItemSearchTerm] = useState(''); // Specific for Movement Item Search
+  const [activeDropdown, setActiveDropdown] = useState<'TYPE' | 'CONCEPT' | 'CATEGORY' | 'BRAND' | 'GENDER' | null>(null);
 
   // --- CAMERA (PHOTO) STATE ---
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -163,7 +165,6 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
 
       // Clean detail inputs too
       setSelectedProductId('');
-      setMovementSku('');
       setItemSearchTerm(''); // Clear item search
       setQtyInput(1);
       setCostInput(0);
@@ -297,13 +298,14 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
       setNewProduct(prev => ({ ...prev, sku: decodedText }));
     } else if (currentView === 'MOVEMENT') {
       // If in Movement, fill SKU AND try to select product
-      setMovementSku(decodedText);
 
       // Auto-find product in available list
       const foundProduct = products.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
       if (foundProduct) {
         setSelectedProductId(foundProduct.id);
+        setItemSearchTerm(foundProduct.name); // Switch to name for better visibility
       } else {
+        setItemSearchTerm(decodedText); // Leave SKU if not found so user sees what scannned
         alert(`Producto con SKU ${decodedText} no encontrado en el sistema.`);
       }
     } else if (currentView === 'AUDIT') {
@@ -499,7 +501,6 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
     ]);
 
     setSelectedProductId('');
-    setMovementSku('');
     setItemSearchTerm(''); // Clear item search
     setQtyInput(1);
     setCostInput(0);
@@ -521,37 +522,13 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
 
     // 2. Populate SKU for visual consistency (UX)
     const prod = products.find(p => p.id === itemToEdit.productId);
-    if (prod) setMovementSku(prod.sku);
+    if (prod) setItemSearchTerm(prod.name);
 
     // 3. Remove from list (so user can re-add updated version)
     setPendingItems(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleMovementScan = () => {
-    if (products.length === 0) return;
-    let foundProduct: Product | undefined;
 
-    if (movementSku) {
-      foundProduct = products.find(p => p.sku.toLowerCase() === movementSku.toLowerCase());
-    } else {
-      const avail = availableProducts;
-      if (avail.length > 0) {
-        foundProduct = avail[Math.floor(Math.random() * avail.length)];
-        setMovementSku(foundProduct.sku);
-      }
-    }
-
-    if (foundProduct) {
-      if (pendingItems.some(i => i.productId === foundProduct.id)) {
-        alert(`"${foundProduct.name}" ya agregado.`);
-        setMovementSku('');
-      } else {
-        setSelectedProductId(foundProduct.id);
-      }
-    } else {
-      alert("Producto no encontrado.");
-    }
-  };
 
   const cancelEdit = () => {
     setEditingMovementId(null);
@@ -989,42 +966,32 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* 1. Tipo de Movimiento */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">Tipo de Movimiento</label>
-                  <div className="relative">
-                    <select
-                      value={movementType}
-                      onChange={(e) => setMovementType(e.target.value as MovementType)}
-                      disabled={!!editingMovementId}
-                      className={`w-full px-4 py-2 pr-10 rounded-lg bg-white/60 border border-white/40 focus:ring-2 focus:ring-brand-primary outline-none text-sm font-medium appearance-none ${editingMovementId ? 'opacity-70 cursor-not-allowed' : ''}`}
-                    >
-                      <option value="IN">Entrada</option>
-                      <option value="OUT">Salida</option>
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
-                      <Icons.ChevronDown />
-                    </div>
-                  </div>
+                <div className="z-20">
+                  <CustomSelect
+                    label="Tipo de Movimiento"
+                    value={movementType}
+                    onChange={(val) => setMovementType(val as MovementType)}
+                    options={[
+                      { value: 'IN', label: 'Entrada' },
+                      { value: 'OUT', label: 'Salida' }
+                    ]}
+                    disabled={!!editingMovementId}
+                    isOpen={activeDropdown === 'TYPE'}
+                    onToggle={() => setActiveDropdown(activeDropdown === 'TYPE' ? null : 'TYPE')}
+                  />
                 </div>
 
                 {/* 2. Concepto (Dependiente) */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">Concepto</label>
-                  <div className="relative">
-                    <select
-                      value={movementConcept}
-                      onChange={(e) => setMovementConcept(e.target.value)}
-                      className="w-full px-4 py-2 pr-10 rounded-lg bg-white/60 border border-white/40 focus:ring-2 focus:ring-brand-primary outline-none text-sm appearance-none"
-                    >
-                      <option value="">-- Seleccionar --</option>
-                      {MOVEMENT_CONCEPTS[movementType].map(concept => (
-                        <option key={concept} value={concept}>{concept}</option>
-                      ))}
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
-                      <Icons.ChevronDown />
-                    </div>
-                  </div>
+                <div className="z-10">
+                  <CustomSelect
+                    label="Concepto"
+                    value={movementConcept}
+                    onChange={(val) => setMovementConcept(val)}
+                    options={MOVEMENT_CONCEPTS[movementType].map(c => ({ value: c, label: c }))}
+                    placeholder="-- Seleccionar --"
+                    isOpen={activeDropdown === 'CONCEPT'}
+                    onToggle={() => setActiveDropdown(activeDropdown === 'CONCEPT' ? null : 'CONCEPT')}
+                  />
                 </div>
 
                 {/* 3. Glosa */}
@@ -1049,80 +1016,91 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
 
               <div className="bg-white/30 p-4 rounded-xl space-y-3">
                 {/* Fila de Escaneo y Selección */}
-                <div className="flex flex-col md:flex-row gap-3 items-end">
-                  <div className="flex-1 w-full">
-                    <label className="block text-xs text-gray-500 mb-1">Escanear / Buscar SKU</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={movementSku}
-                        onChange={e => setMovementSku(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleMovementScan()}
-                        placeholder="Código de Barras..."
-                        className="flex-1 px-3 py-2 rounded-lg bg-white/80 border-none text-sm focus:ring-2 focus:ring-brand-primary outline-none"
-                      />
-                      <button
-                        onClick={() => setIsScanning(true)}
-                        className="px-3 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary transition-colors shadow-lg shadow-brand-primary/20"
-                        title="Escanear con Cámara"
-                      >
-                        <Icons.Barcode />
-                      </button>
+                <div className="w-full relative">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Buscar Producto o Escanear SKU</label>
+                  <div className="relative group">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                      <Icons.Search />
                     </div>
-                  </div>
+                    <input
+                      type="text"
+                      placeholder="Escriba nombre o escanee código de barras..."
+                      value={itemSearchTerm}
+                      onChange={e => {
+                        setItemSearchTerm(e.target.value);
+                        setSelectedProductId('');
+                        setShowProductResults(true);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          // Try to find exact SKU match first
+                          const term = itemSearchTerm.trim().toLowerCase();
+                          const exactMatch = products.find(p => p.sku.toLowerCase() === term);
+                          if (exactMatch) {
+                            setSelectedProductId(exactMatch.id);
+                            setItemSearchTerm(exactMatch.name);
+                            setShowProductResults(false);
+                          }
+                        }
+                      }}
+                      onFocus={() => setShowProductResults(true)}
+                      className="w-full pl-10 pr-12 py-3 rounded-lg bg-white/70 border border-white/50 focus:ring-2 focus:ring-brand-primary outline-none text-sm transition-shadow shadow-sm"
+                    />
 
-                  <div className="flex-[2] w-full relative">
-                    <label className="block text-xs font-semibold text-gray-500 mb-1">Buscar y Seleccionar Producto</label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Escriba nombre del producto..."
-                        value={itemSearchTerm}
-                        onChange={e => {
-                          setItemSearchTerm(e.target.value);
-                          setSelectedProductId(''); // Reset selection on type
-                          setShowProductResults(true);
-                        }}
-                        onFocus={() => setShowProductResults(true)}
-                        className="w-full px-3 py-2 rounded-lg bg-white/60 border border-gray-200 text-sm focus:ring-2 focus:ring-brand-primary outline-none"
-                      />
+                    {/* Embedded Scan Button */}
+                    <button
+                      onClick={() => setIsScanning(true)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-md transition-all duration-200"
+                      title="Abrir Escáner"
+                    >
+                      <Icons.Barcode />
+                    </button>
 
-                      {/* AUTOCOMPLETE DROPDOWN */}
-                      {showProductResults && !selectedProductId && (
-                        <>
-                          <div className="fixed inset-0 z-20" onClick={() => setShowProductResults(false)} />
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-60 overflow-y-auto scrollbar-thin z-30 animate-fade-in-down">
-                            {availableProducts
-                              .filter(p => !itemSearchTerm || p.name.toLowerCase().includes(itemSearchTerm.toLowerCase()) || p.sku.toLowerCase().includes(itemSearchTerm.toLowerCase()))
-                              .length > 0 ? (
-                              availableProducts
-                                .filter(p => !itemSearchTerm || p.name.toLowerCase().includes(itemSearchTerm.toLowerCase()) || p.sku.toLowerCase().includes(itemSearchTerm.toLowerCase()))
-                                .map(p => (
-                                  <div
-                                    key={p.id}
-                                    onClick={() => {
-                                      setSelectedProductId(p.id);
-                                      setItemSearchTerm(p.name);
-                                      setShowProductResults(false);
-                                    }}
-                                    className="px-4 py-2 hover:bg-violet-50 cursor-pointer border-b border-gray-50 last:border-0"
-                                  >
-                                    <div className="font-bold text-gray-800 text-sm">{p.name}</div>
-                                    <div className="flex justify-between items-center text-xs text-gray-400 mt-0.5">
-                                      <span>SKU: {p.sku}</span>
-                                      <span className={p.stock_level <= p.min_stock ? 'text-red-500 font-bold' : 'text-gray-500'}>Stock: {p.stock_level}</span>
+                    {/* Autocomplete Dropdown */}
+                    {showProductResults && !selectedProductId && (
+                      <>
+                        <div className="fixed inset-0 z-20" onClick={() => setShowProductResults(false)} />
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl max-h-60 overflow-y-auto custom-scrollbar z-30 animate-fade-in-down">
+                          {availableProducts
+                            .filter(p =>
+                              p.name.toLowerCase().includes(itemSearchTerm.toLowerCase()) ||
+                              p.sku.toLowerCase().includes(itemSearchTerm.toLowerCase())
+                            )
+                            .length > 0 ? (
+                            availableProducts
+                              .filter(p =>
+                                p.name.toLowerCase().includes(itemSearchTerm.toLowerCase()) ||
+                                p.sku.toLowerCase().includes(itemSearchTerm.toLowerCase())
+                              )
+                              .map(p => (
+                                <div
+                                  key={p.id}
+                                  onClick={() => {
+                                    setSelectedProductId(p.id);
+                                    setItemSearchTerm(p.name);
+                                    setShowProductResults(false);
+                                  }}
+                                  className="px-4 py-3 hover:bg-violet-50 cursor-pointer border-b border-gray-50 last:border-0 group transition-colors"
+                                >
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <div className="font-bold text-gray-800 text-sm group-hover:text-brand-primary transition-colors">{p.name}</div>
+                                      <div className="text-xs text-gray-400 font-mono mt-0.5">SKU: {p.sku}</div>
+                                    </div>
+                                    <div className={`text-xs font-bold px-2 py-1 rounded ${p.stock_level <= p.min_stock ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
+                                      Stock: {p.stock_level}
                                     </div>
                                   </div>
-                                ))
-                            ) : (
-                              <div className="p-4 text-center text-gray-400 text-xs italic">
-                                No se encontraron productos.
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                                </div>
+                              ))
+                          ) : (
+                            <div className="p-4 text-center text-gray-400 text-xs italic">
+                              No se encontraron productos coinciden con "{itemSearchTerm}".
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1904,45 +1882,27 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
                 </div>
 
                 {/* Categoría y Marca */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">Categoría *</label>
-                  <div className="relative">
-                    <select
-                      name="category_id"
-                      value={newProduct.category_id}
-                      onChange={handleProductChange}
-                      required
-                      className="w-full px-4 py-2 pr-10 rounded-lg bg-white/60 border border-white/40 focus:ring-2 focus:ring-brand-primary outline-none text-sm appearance-none"
-                    >
-                      <option value="">-- Seleccionar --</option>
-                      {categories.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
-                      <Icons.ChevronDown />
-                    </div>
-                  </div>
+                <div className="z-20">
+                  <CustomSelect
+                    label="Categoría"
+                    value={newProduct.category_id}
+                    onChange={(val) => handleProductChange({ target: { name: 'category_id', value: val } } as any)}
+                    options={categories.map(c => ({ value: c.id, label: c.name }))}
+                    isOpen={activeDropdown === 'CATEGORY'}
+                    onToggle={() => setActiveDropdown(activeDropdown === 'CATEGORY' ? null : 'CATEGORY')}
+                    required
+                  />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">Marca *</label>
-                  <div className="relative">
-                    <select
-                      name="brand_id" // Use brand_id for value
-                      value={newProduct.brand_id}
-                      onChange={handleBrandChange} // Custom handler
-                      required
-                      className="w-full px-4 py-2 pr-10 rounded-lg bg-white/60 border border-white/40 focus:ring-2 focus:ring-brand-primary outline-none text-sm appearance-none"
-                    >
-                      <option value="">-- Seleccionar --</option>
-                      {brands.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
-                      <Icons.ChevronDown />
-                    </div>
-                  </div>
+                <div className="z-20">
+                  <CustomSelect
+                    label="Marca"
+                    value={newProduct.brand_id}
+                    onChange={(val) => handleBrandChange({ target: { name: 'brand_id', value: val } } as any)}
+                    options={brands.map(b => ({ value: b.id, label: b.name }))}
+                    isOpen={activeDropdown === 'BRAND'}
+                    onToggle={() => setActiveDropdown(activeDropdown === 'BRAND' ? null : 'BRAND')}
+                    required
+                  />
                   {/* Fallback Display or Hidden Input for Legacy Text (auto-filled) */}
                   <input type="hidden" name="brand" value={newProduct.brand} />
                 </div>
@@ -1958,20 +1918,21 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
                   <FormInput label="Talla" name="size" value={newProduct.size || ''} onChange={handleProductChange} placeholder="Ej. M, 42, Única" />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">Género / Sexo</label>
-                  <div className="relative">
-                    <select name="gender" value={newProduct.gender} onChange={handleProductChange} className="w-full px-4 py-2 pr-10 rounded-lg bg-white/60 border border-white/40 focus:ring-2 focus:ring-brand-primary outline-none text-sm appearance-none">
-                      <option value="UNISEX">Unisex</option>
-                      <option value="HOMBRE">Hombre</option>
-                      <option value="MUJER">Mujer</option>
-                      <option value="NIÑA">Niña</option>
-                      <option value="NIÑO">Niño</option>
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
-                      <Icons.ChevronDown />
-                    </div>
-                  </div>
+                <div className="z-10">
+                  <CustomSelect
+                    label="Género / Sexo"
+                    value={newProduct.gender}
+                    onChange={(val) => handleProductChange({ target: { name: 'gender', value: val } } as any)}
+                    options={[
+                      { value: 'UNISEX', label: 'Unisex' },
+                      { value: 'HOMBRE', label: 'Hombre' },
+                      { value: 'MUJER', label: 'Mujer' },
+                      { value: 'NIÑA', label: 'Niña' },
+                      { value: 'NIÑO', label: 'Niño' }
+                    ]}
+                    isOpen={activeDropdown === 'GENDER'}
+                    onToggle={() => setActiveDropdown(activeDropdown === 'GENDER' ? null : 'GENDER')}
+                  />
                 </div>
 
                 <div>

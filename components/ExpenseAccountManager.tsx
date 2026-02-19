@@ -121,7 +121,7 @@ export const ExpenseAccountManager: React.FC<ExpenseAccountManagerProps> = ({ on
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6 bg-gray-50/30">
+                <div className="flex-1 overflow-y-auto p-6 bg-gray-50/30 custom-scrollbar">
 
                     {/* Add New Main Account */}
                     <form onSubmit={handleAddAccount} className="mb-6 flex gap-3">

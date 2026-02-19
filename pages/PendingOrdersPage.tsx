@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { orderService, salesService, paymentMethodService, customerService } from '../services/supabaseService';
-import { Order, CartItem, User, PaymentMethod } from '../types';
+import { Order, CartItem, User, PaymentMethod, PaymentMethodType } from '../types';
 import { GlassCard } from '../components/GlassCard';
+
+// --- PAYMENT ICONS (Lucide) ---
+const PaymentIcons = {
+    Cash: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="12" x="2" y="6" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></svg>,
+    Card: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></svg>,
+    Transfer: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" x2="21" y1="22" y2="22" /><line x1="6" x2="6" y1="18" y2="11" /><line x1="10" x2="10" y1="18" y2="11" /><line x1="14" x2="14" y1="18" y2="11" /><line x1="18" x2="18" y1="18" y2="11" /><polygon points="12 2 20 7 4 7" /></svg>,
+    Other: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2" /><path d="M12 18h.01" /></svg>,
+    Back: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>,
+    ChevronRight: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>,
+};
 
 interface PendingOrdersPageProps {
     user: User;
@@ -16,6 +26,7 @@ export const PendingOrdersPage: React.FC<PendingOrdersPageProps> = ({ user }) =>
     const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     const [selectedMethodId, setSelectedMethodId] = useState<string>('');
+    const [selectedPaymentType, setSelectedPaymentType] = useState<PaymentMethodType | null>(null);
     const [processing, setProcessing] = useState(false);
 
     useEffect(() => {
@@ -41,11 +52,12 @@ export const PendingOrdersPage: React.FC<PendingOrdersPageProps> = ({ user }) =>
     const loadPaymentMethods = async () => {
         const methods = await paymentMethodService.getAll(true);
         setPaymentMethods(methods);
-        if (methods.length > 0) setSelectedMethodId(methods[0].id);
     };
 
     const handleOpenProcess = (order: Order) => {
         setSelectedOrder(order);
+        setSelectedPaymentType(null);
+        setSelectedMethodId('');
         setIsProcessModalOpen(true);
     };
 
@@ -244,24 +256,71 @@ export const PendingOrdersPage: React.FC<PendingOrdersPageProps> = ({ user }) =>
                                 </div>
                             </div>
 
-                            <div>
+                            <div className="min-h-[250px] flex flex-col">
                                 <label className="block text-xs font-bold text-gray-600 mb-2">Método de Pago</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {paymentMethods.map(method => (
+
+                                {!selectedPaymentType ? (
+                                    <div className="grid grid-cols-2 gap-3 flex-1">
+                                        {[
+                                            { id: 'CASH', label: 'Efectivo', Icon: PaymentIcons.Cash, color: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' },
+                                            { id: 'CARD', label: 'Tarjeta (POS)', Icon: PaymentIcons.Card, color: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' },
+                                            { id: 'TRANSFER', label: 'Transferencia', Icon: PaymentIcons.Transfer, color: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' },
+                                        ].map((t) => {
+                                            const hasMethods = paymentMethods.some(pm => pm.type === t.id);
+                                            // Cast t.id to PaymentMethodType to avoid type errors
+                                            const typeId = t.id as PaymentMethodType;
+
+                                            return (
+                                                <button
+                                                    key={t.id}
+                                                    onClick={() => setSelectedPaymentType(typeId)}
+                                                    disabled={!hasMethods}
+                                                    className={`
+                                                        flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-95
+                                                        ${t.color}
+                                                        ${!hasMethods ? 'opacity-40 grayscale cursor-not-allowed' : ''}
+                                                    `}
+                                                >
+                                                    <t.Icon />
+                                                    <span className="font-bold text-xs text-center mt-2">{t.label}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col h-full animate-fade-in flex-1">
                                         <button
-                                            key={method.id}
-                                            onClick={() => setSelectedMethodId(method.id)}
-                                            className={`
-                                                p-3 rounded-xl border text-sm font-bold transition-all
-                                                ${selectedMethodId === method.id
-                                                    ? 'bg-brand-primary/10 border-brand-primary text-brand-primary'
-                                                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}
-                                            `}
+                                            onClick={() => {
+                                                setSelectedPaymentType(null);
+                                                setSelectedMethodId('');
+                                            }}
+                                            className="flex items-center gap-2 text-xs text-gray-500 hover:text-brand-primary mb-3 font-bold"
                                         >
-                                            {method.name}
+                                            <PaymentIcons.Back />
+                                            Volver a Tipos
                                         </button>
-                                    ))}
-                                </div>
+
+                                        <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                                            {paymentMethods.filter(pm => pm.type === selectedPaymentType).map(method => (
+                                                <button
+                                                    key={method.id}
+                                                    onClick={() => setSelectedMethodId(method.id)}
+                                                    className={`
+                                                        flex items-center justify-between p-3 rounded-xl border transition-all text-sm group
+                                                        ${selectedMethodId === method.id
+                                                            ? 'bg-brand-primary/10 border-brand-primary text-brand-primary font-bold'
+                                                            : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}
+                                                    `}
+                                                >
+                                                    <span>{method.name}</span>
+                                                    {selectedMethodId === method.id && (
+                                                        <div className="w-2 h-2 bg-brand-primary rounded-full"></div>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -274,8 +333,12 @@ export const PendingOrdersPage: React.FC<PendingOrdersPageProps> = ({ user }) =>
                             </button>
                             <button
                                 onClick={handleProcessOrder}
-                                disabled={processing}
-                                className="flex-[2] py-3 bg-green-500 text-white font-bold rounded-xl shadow-lg shadow-green-500/30 hover:bg-green-600 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                disabled={processing || !selectedMethodId}
+                                className={`flex-[2] py-3 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2
+                                    ${processing || !selectedMethodId
+                                        ? 'bg-gray-400 shadow-none cursor-not-allowed'
+                                        : 'bg-green-500 shadow-green-500/30 hover:bg-green-600 active:scale-95'}
+                                `}
                             >
                                 {processing ? 'Procesando...' : 'Confirmar Entrega'}
                             </button>
