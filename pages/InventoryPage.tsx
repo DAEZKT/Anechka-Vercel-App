@@ -104,6 +104,14 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
   const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const [totalInvestment, setTotalInvestment] = useState(0);
 
+  // --- PAGINATION STATE ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [stockSearchTerm]);
+
   // --- KARDEX STATE ---
   const [movements, setMovements] = useState<InventoryMovementHeader[]>([]);
   const [selectedMovement, setSelectedMovement] = useState<InventoryMovementHeader | null>(null);
@@ -703,6 +711,12 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
       (p.category_name && p.category_name.toLowerCase().includes(term))
     );
   });
+
+  // --- PAGINATION LOGIC ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentProducts = filteredStock.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredStock.length / itemsPerPage);
 
   const getStockStatus = (stock: number, min: number) => {
     if (stock === 0) return { label: 'Agotado', color: 'bg-red-100 text-red-600 border-red-200' };
@@ -1690,7 +1704,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
                       </td>
                     </tr>
                   ) : (
-                    filteredStock.map(product => {
+                    currentProducts.map(product => {
                       const status = getStockStatus(product.stock_level, product.min_stock);
                       return (
                         <tr
@@ -1750,6 +1764,56 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ user, initialView 
                 </tbody>
               </table>
             </div>
+
+            {/* PAGINATION CONTROLS */}
+            {filteredStock.length > 0 && (
+              <div className="flex justify-between items-center bg-white/30 border-t border-gray-100 p-4 backdrop-blur-sm">
+                <div className="text-xs text-gray-500 font-medium">
+                  Mostrando {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredStock.length)} de {filteredStock.length} items
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-lg hover:bg-white/50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-brand-primary"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum = i + 1;
+                      if (totalPages > 5) {
+                        if (currentPage <= 3) pageNum = i + 1;
+                        else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                        else pageNum = currentPage - 2 + i;
+                      }
+
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`
+                            w-8 h-8 rounded-lg text-xs font-bold transition-all flex items-center justify-center
+                            ${currentPage === pageNum ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' : 'text-gray-600 hover:bg-white/50'}
+                          `}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-lg hover:bg-white/50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-brand-primary"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                  </button>
+                </div>
+              </div>
+            )}
           </GlassCard>
 
           {/* Modal Detail Omitted (Unchanged) */}
