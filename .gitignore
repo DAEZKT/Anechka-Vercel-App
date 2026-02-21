@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# environments
+.env
+.env.*
+!.env.example
+
+# vercel
+.vercel
