@@ -60,19 +60,11 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             scannerRef.current = scanner;
 
             const config = {
-                fps: 20, // Acelerado para respuesta inmediata
-                qrbox: { width: 300, height: 150 }, // Rectángulo apaisado, vital para códigos de barras 1D de productos
-                aspectRatio: 1.0,
-                disableFlip: false,
-                experimentalFeatures: {
-                    useBarCodeDetectorIfSupported: true // ACELERACIÓN NATÍVA POR HARDWARE GPU
-                },
-                videoConstraints: {
-                    width: { min: 640, ideal: 1280, max: 1920 },
-                    height: { min: 480, ideal: 720, max: 1080 },
-                    focusMode: 'continuous'
-                    // Quitamos force zoom porque algunas cámaras viejas fallan si no soportan zoom API
-                }
+                fps: 10, // Un FPS más estable para evitar sobrecarga de CPU en móviles gama media
+                qrbox: { width: 300, height: 150 }, // Rectángulo de enfoque
+                disableFlip: false
+                // Se eliminan restricciones estrictas (ideal/min/max width) que causaban el error de bloqueado (pantalla negra) en algunos Android.
+                // También se elimina `aspectRatio` que deforma y pone borrosa la cámara, y `useBarCodeDetectorIfSupported` que falla en Chrome Android.
             };
 
             const cameraConfig = cameraId ? { deviceId: { exact: cameraId } } : { facingMode: "environment" };
@@ -233,8 +225,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             <button
                                 onClick={toggleFlash}
                                 className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold tracking-wider text-sm transition-all duration-300 ${isFlashOn
-                                        ? 'bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.6)] scale-105'
-                                        : 'bg-black/40 text-white border border-white/20 backdrop-blur-md hover:bg-white/20'
+                                    ? 'bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.6)] scale-105'
+                                    : 'bg-black/40 text-white border border-white/20 backdrop-blur-md hover:bg-white/20'
                                     }`}
                             >
                                 <Flashlight size={18} className={isFlashOn ? 'fill-black' : ''} />
