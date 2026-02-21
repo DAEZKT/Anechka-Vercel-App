@@ -57,6 +57,9 @@ const Icons = {
       <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
       <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
     </svg>
+  ),
+  Download: ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
   )
 };
 
@@ -67,6 +70,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   // Auto-expand menu if current page belongs to it
   useEffect(() => {
@@ -74,6 +78,25 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
       setIsInventoryOpen(true);
     }
   }, [currentPage]);
+
+  // Handle BeforeInstallPrompt for PWA
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   // Handle Mobile Navigation Click (Close menu)
   const handleMobileNavigate = (page: string) => {
@@ -252,9 +275,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, curren
         </nav>
 
         {/* Sidebar Footer (User Profile) */}
-        <div className="p-4 border-t border-white/20 bg-white/30 lg:bg-white/10">
+        <div className="p-4 border-t border-white/20 bg-white/30 lg:bg-white/10 flex flex-col gap-2">
+          {deferredPrompt && (
+            <button
+              onClick={handleInstallPWA}
+              className="w-full text-xs bg-brand-primary hover:bg-brand-primary/90 text-white shadow-lg shadow-brand-primary/30 py-2.5 rounded-lg transition-transform hover:scale-105 flex items-center justify-center gap-2 font-bold mb-2"
+            >
+              <Icons.Download className="w-4 h-4" /> Instalar DAEZKT App
+            </button>
+          )}
           <div
-            className="flex items-center gap-3 mb-3 cursor-pointer hover:bg-white/20 p-2 rounded-lg transition-colors group/profile"
+            className="flex items-center gap-3 cursor-pointer hover:bg-white/20 p-2 rounded-lg transition-colors group/profile"
             onClick={() => setIsProfileModalOpen(true)}
             title="Clic para cambiar contraseña"
           >
