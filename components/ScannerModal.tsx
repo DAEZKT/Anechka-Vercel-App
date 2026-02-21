@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { X, Camera, Flashlight } from 'lucide-react';
 
 interface ScannerModalProps {
     isOpen: boolean;
@@ -8,183 +9,260 @@ interface ScannerModalProps {
     title?: string;
 }
 
-/**
- * ScannerModal - Refactored Component
- * Implementación limpia y profesional utilizando html5-qrcode.
- */
-export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onScan, title = "Escanear Código" }) => {
-    // Referencia para mantener la instancia del escáner y controlar su ciclo de vida
+export const ScannerModal: React.FC<ScannerModalProps> = ({
+    isOpen,
+    onClose,
+    onScan,
+    title = "MODO ESCÁNER PRO"
+}) => {
     const scannerRef = useRef<Html5Qrcode | null>(null);
     const scannerId = "reader";
+    const [hasFlash, setHasFlash] = useState(false);
+    const [isFlashOn, setIsFlashOn] = useState(false);
+    const [cameras, setCameras] = useState<{ id: string, label: string }[]>([]);
+    const [activeCameraId, setActiveCameraId] = useState<string | null>(null);
+    const [isStarting, setIsStarting] = useState(false);
 
-    useEffect(() => {
-        if (!isOpen) return;
-
-        // Limpieza preventiva del DOM para evitar errores de duplicidad
-        const element = document.getElementById(scannerId);
-        if (element) element.innerHTML = "";
-
-        let isMounted = true;
-        let scannerInstance: Html5Qrcode | null = null;
-
-        const initializeScanner = async () => {
+    const stopScanner = async () => {
+        if (scannerRef.current && scannerRef.current.isScanning) {
             try {
-                // Instanciamos la clase con formato verbose falso para producción
-                scannerInstance = new Html5Qrcode(scannerId, false);
-                scannerRef.current = scannerInstance;
-
-                // Configuración Técnica "Senior"
-                const config = {
-                    fps: 10,
-                    qrbox: { width: 250, height: 150 },
-                    aspectRatio: 1.0,
-                    disableFlip: false,
-                    // MEJORA CLAVE: Utilizar API nativa del navegador si existe (Android/iOS)
-                    // Esto mejora drásticamente la velocidad de lectura de códigos de barras.
-                    experimentalFeatures: {
-                        useBarCodeDetectorIfSupported: true
-                    },
-                    // MEJORA DE CALIDAD: Solicitar resolución HD y enfoque
-                    videoConstraints: {
-                        facingMode: "environment", // Redundante pero seguro
-                        width: { min: 640, ideal: 1280, max: 1920 },
-                        height: { min: 480, ideal: 720, max: 1080 },
-                        // @ts-ignore - Propiedad estándar moderna no siempre en tipos TS
-                        focusMode: 'continuous'
-                    }
-                };
-
-                // Iniciar escáner forzando cámara trasera ('environment')
-                await scannerInstance.start(
-                    { facingMode: "environment" },
-                    config,
-                    (decodedText) => {
-                        if (!isMounted) return;
-
-                        // Feedback háptico profesional
-                        if (navigator.vibrate) {
-                            navigator.vibrate(100);
-                        }
-
-                        // Sonido de "beep" sutil (opcional pero recomendado junto a vibración)
-                        playSimpleBeep();
-
-                        onScan(decodedText);
-
-                        // Cierre automático tras éxito
-                        onClose();
-                    },
-                    (errorMessage) => {
-                        // Callback de error por frame (ruido). 
-                        // No hacemos log para no saturar la consola, es normal mientras busca QR.
-                    }
-                );
+                await scannerRef.current.stop();
+                scannerRef.current.clear();
             } catch (err) {
-                console.error("Error crítico al iniciar la cámara:", err);
-                if (isMounted) {
-                    alert("No se pudo iniciar la cámara. Verifique que 'Sitio Seguro (HTTPS)' esté activo y los permisos concedidos.");
-                    onClose();
-                }
+                console.warn("Error deteniendo escáner:", err);
             }
-        };
+        }
+    };
 
-        // Pequeño delay para asegurar que el modal y el div #reader estén renderizados
-        const timer = setTimeout(() => {
-            initializeScanner();
-        }, 300);
+    const startScanner = useCallback(async (cameraId?: string) => {
+        if (!isOpen) return;
+        setIsStarting(true);
+        await stopScanner();
 
-        // Ciclo de Vida: Cleanup (Desmontaje)
-        return () => {
-            isMounted = false;
-            clearTimeout(timer);
-
-            if (scannerInstance) {
-                scannerInstance.stop()
-                    .then(() => scannerInstance?.clear())
-                    .catch(e => {
-                        console.warn("Scanner stop/clear warning:", e);
-                        // Forzamos limpieza UI si falla el stop lógico
-                        const el = document.getElementById(scannerId);
-                        if (el) el.innerHTML = "";
-                    });
-            }
-        };
-    }, [isOpen]);
-
-    // Función auxiliar para feedback auditivo simple
-    const playSimpleBeep = () => {
         try {
-            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-            if (!AudioContext) return;
-            const ctx = new AudioContext();
+            // Asegurar DOM limpio
+            const el = document.getElementById(scannerId);
+            if (el) el.innerHTML = "";
+
+            // OPTIMIZACIÓN DE ALTO RENDIMIENTO (TESLA MODE): 
+            // Limitar solo a códigos de producto para ignorar basura y acelerar la lectura exponencialmente.
+            const formatsToSupport = [
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E,
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.CODE_39,
+                Html5QrcodeSupportedFormats.QR_CODE
+            ];
+
+            const scanner = new Html5Qrcode(scannerId, { formatsToSupport, verbose: false });
+            scannerRef.current = scanner;
+
+            const config = {
+                fps: 20, // Acelerado para respuesta inmediata
+                qrbox: { width: 300, height: 150 }, // Rectángulo apaisado, vital para códigos de barras 1D de productos
+                aspectRatio: 1.0,
+                disableFlip: false,
+                experimentalFeatures: {
+                    useBarCodeDetectorIfSupported: true // ACELERACIÓN NATÍVA POR HARDWARE GPU
+                },
+                videoConstraints: {
+                    width: { min: 640, ideal: 1280, max: 1920 },
+                    height: { min: 480, ideal: 720, max: 1080 },
+                    focusMode: 'continuous'
+                    // Quitamos force zoom porque algunas cámaras viejas fallan si no soportan zoom API
+                }
+            };
+
+            const cameraConfig = cameraId ? { deviceId: { exact: cameraId } } : { facingMode: "environment" };
+
+            await scanner.start(
+                cameraConfig,
+                config,
+                (decodedText) => {
+                    playSuccessFeedback();
+                    onScan(decodedText);
+                    onClose(); // Auto close exitoso
+                },
+                (errorMessage) => {
+                    // Logs omitidos intencionalmente para evitar overhead
+                }
+            );
+
+            // Verificar si hay hardware para LINTERNA (Torch)
+            const capabilities = scanner.getRunningTrackCameraCapabilities();
+            if (capabilities && capabilities.torchFeature() && capabilities.torchFeature().isSupported()) {
+                setHasFlash(true);
+            } else {
+                setHasFlash(false);
+            }
+
+        } catch (err) {
+            console.error("Fallo al inicializar cámara Pro:", err);
+        } finally {
+            setIsStarting(false);
+        }
+    }, [isOpen, onScan, onClose]);
+
+    // Inicializar cámaras
+    useEffect(() => {
+        if (isOpen) {
+            Html5Qrcode.getCameras().then(devices => {
+                if (devices && devices.length > 0) {
+                    setCameras(devices);
+                }
+            }).catch(e => console.error("No se detectan cámaras:", e));
+
+            // Retraso para transiciones de UI
+            const timeoutId = setTimeout(() => {
+                startScanner();
+            }, 300);
+
+            return () => clearTimeout(timeoutId);
+        }
+
+        return () => {
+            stopScanner();
+        };
+    }, [isOpen, startScanner]);
+
+    const playSuccessFeedback = () => {
+        if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+        try {
+            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.connect(gain);
             gain.connect(ctx.destination);
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(1500, ctx.currentTime);
-            gain.gain.setValueAtTime(0.05, ctx.currentTime);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1400, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(2000, ctx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.5, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
             osc.start();
             osc.stop(ctx.currentTime + 0.1);
         } catch (e) { }
     };
 
+    const toggleFlash = async () => {
+        if (!scannerRef.current || !hasFlash) return;
+        try {
+            await scannerRef.current.applyVideoConstraints({
+                advanced: [{ torch: !isFlashOn }]
+            });
+            setIsFlashOn(!isFlashOn);
+        } catch (e) {
+            console.warn("Fallo al cambiar flash", e);
+        }
+    };
+
+    const switchCamera = () => {
+        if (cameras.length < 2) return;
+        let nextCamId = cameras[0].id;
+        if (activeCameraId) {
+            const currentIndex = cameras.findIndex(c => c.id === activeCameraId);
+            const nextIndex = (currentIndex + 1) % cameras.length;
+            nextCamId = cameras[nextIndex].id;
+        } else {
+            // Si estabamos en environment y listamos multiples cámaras, giramos a la que no sea environment (si son 2, es obvio)
+            nextCamId = cameras[0].id;
+        }
+        setActiveCameraId(nextCamId);
+        startScanner(nextCamId);
+    };
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center animate-fade-in">
-            {/* Header Flotante */}
-            <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-20 bg-gradient-to-b from-black/60 to-transparent">
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in duration-200">
+            {/* Cabezal de Controles */}
+            <div className="flex justify-between items-center p-4 z-20 bg-gradient-to-b from-black/90 to-transparent absolute top-0 left-0 right-0">
                 <button
                     onClick={onClose}
-                    className="p-3 bg-white/10 backdrop-blur-md rounded-full text-white hover:bg-white/20 transition-all border border-white/10"
+                    className="p-3 bg-white/10 rounded-full text-white hover:bg-white/30 transition-all backdrop-blur-md border border-white/20 shadow-lg"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <X size={24} />
                 </button>
-                <h2 className="text-white font-medium text-lg tracking-wide shadow-black drop-shadow-md">{title}</h2>
-                <div className="w-10"></div> {/* Spacer */}
+                <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse"></span>
+                    <h2 className="text-white font-bold tracking-[0.2em] text-xs sm:text-sm uppercase drop-shadow-md">
+                        {title}
+                    </h2>
+                </div>
+
+                {cameras.length > 1 ? (
+                    <button
+                        onClick={switchCamera}
+                        className="p-3 bg-white/10 rounded-full text-white hover:bg-white/30 transition-all backdrop-blur-md border border-white/20 shadow-lg"
+                    >
+                        <Camera size={24} />
+                    </button>
+                ) : (
+                    <div className="w-12"></div>
+                )}
             </div>
 
-            {/* Contenedor del Escáner */}
-            <div className="w-full h-full relative bg-gray-900 flex items-center justify-center overflow-hidden">
-                {/* 
-                    IMPORTANTE: 
-                    El div #reader debe tener dimensiones controladas.
-                    html5-qrcode inyectará el video aquí.
-                */}
-                <div id={scannerId} className="w-full h-full"></div>
-
-                {/* Overlay Visual Puramente Estético (No afecta al video) */}
-                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                    <div className="w-[250px] h-[150px] border-2 border-white/50 rounded-lg relative shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
-                        {/* Esquinas Brillantes */}
-                        <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-400 -mt-[2px] -ml-[2px]" />
-                        <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-400 -mt-[2px] -mr-[2px]" />
-                        <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-400 -mb-[2px] -ml-[2px]" />
-                        <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-400 -mb-[2px] -mr-[2px]" />
-
-                        {/* Línea de escaneo animada */}
-                        <div className="absolute left-0 right-0 h-[2px] bg-red-500 animate-[scan_2s_linear_infinite] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
+            {/* Viewfinder Content */}
+            <div className="flex-1 w-full relative flex items-center justify-center bg-zinc-950 overflow-hidden">
+                {isStarting && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
+                        <div className="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-4"></div>
+                        <p className="text-emerald-500/70 text-sm font-medium tracking-widest animate-pulse">CALIBRANDO CÁMARA...</p>
                     </div>
-                    <p className="mt-6 text-white text-sm font-medium bg-black/40 px-3 py-1 rounded-full backdrop-blur-sm">
-                        Coloque el código dentro del cuadro
-                    </p>
+                )}
+
+                <div id={scannerId} className="w-full max-w-2xl h-[80vh] flex items-center justify-center"></div>
+
+                {/* Cybernetic Laser Overlay */}
+                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                    <div className="w-[300px] h-[150px] sm:w-[450px] sm:h-[180px] border border-white/20 rounded-2xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.70)]">
+                        {/* Esquinas Leds Avanzadas */}
+                        <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-emerald-400 rounded-tl-2xl -mt-[2px] -ml-[2px] shadow-[0_0_15px_rgba(52,211,153,0.6)]" />
+                        <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-emerald-400 rounded-tr-2xl -mt-[2px] -mr-[2px] shadow-[0_0_15px_rgba(52,211,153,0.6)]" />
+                        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-emerald-400 rounded-bl-2xl -mb-[2px] -ml-[2px] shadow-[0_0_15px_rgba(52,211,153,0.6)]" />
+                        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-emerald-400 rounded-br-2xl -mb-[2px] -mr-[2px] shadow-[0_0_15px_rgba(52,211,153,0.6)]" />
+
+                        {/* Scanline Dinámico */}
+                        <div className="absolute left-3 right-3 h-[2px] bg-red-500 animate-[scan_1.5s_cubic-bezier(.5,0,.5,1)_infinite] shadow-[0_0_12px_rgba(239,68,68,1)] rounded-full"></div>
+                    </div>
+
+                    {/* Controles Flotantes Inferiores */}
+                    <div className="absolute bottom-12 flex gap-4 pointer-events-auto">
+                        {hasFlash && (
+                            <button
+                                onClick={toggleFlash}
+                                className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold tracking-wider text-sm transition-all duration-300 ${isFlashOn
+                                        ? 'bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.6)] scale-105'
+                                        : 'bg-black/40 text-white border border-white/20 backdrop-blur-md hover:bg-white/20'
+                                    }`}
+                            >
+                                <Flashlight size={18} className={isFlashOn ? 'fill-black' : ''} />
+                                {isFlashOn ? 'APAGAR LUZ' : 'ENCENDER LUZ'}
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
             <style>{`
-                /* Forza al video a comportarse como fondo cover */
+                /* Estabilizar video para pantallas ultrawide/mobile */
                 #reader video {
                     object-fit: cover !important;
                     width: 100% !important;
                     height: 100% !important;
-                    border-radius: 0 !important;
+                    border-radius: 12px;
                 }
+                
+                #reader {
+                     border: none !important;
+                }
+                
                 @keyframes scan {
-                    0% { top: 10%; opacity: 0; }
-                    10% { opacity: 1; }
-                    90% { opacity: 1; }
-                    100% { top: 90%; opacity: 0; }
+                    0% { top: 5%; opacity: 0; }
+                    15% { opacity: 1; }
+                    85% { opacity: 1; }
+                    100% { top: 95%; opacity: 0; }
                 }
             `}</style>
         </div>
