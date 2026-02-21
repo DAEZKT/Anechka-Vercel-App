@@ -277,11 +277,26 @@ export const productService = {
     return { success: !error };
   },
 
-  delete: async (id: string): Promise<{ success: boolean }> => {
+  delete: async (id: string, currentUser?: { id: string; name: string }): Promise<{ success: boolean }> => {
+    let productName = 'ID: ' + id;
+    if (currentUser) {
+      const { data } = await supabase.from('products').select('name').eq('id', id).single();
+      if (data) productName = data.name;
+    }
+
     const { error } = await supabase
       .from('products')
       .delete()
       .eq('id', id);
+
+    if (!error && currentUser) {
+      await auditLogService.logCriticalAction(
+        currentUser.id,
+        currentUser.name,
+        'BORRADO_PRODUCTO',
+        `Se eliminó del catálogo el producto: ${productName}`
+      );
+    }
 
     return { success: !error };
   },
@@ -331,6 +346,27 @@ export const customerService = {
       .from('customers')
       .update(updates)
       .eq('id', id);
+
+    return { success: !error };
+  },
+
+  delete: async (id: string, currentUser?: { id: string; name: string }): Promise<{ success: boolean }> => {
+    let customerName = 'ID: ' + id;
+    if (currentUser) {
+      const { data } = await supabase.from('customers').select('name').eq('id', id).single();
+      if (data) customerName = data.name;
+    }
+
+    const { error } = await supabase.from('customers').delete().eq('id', id);
+
+    if (!error && currentUser) {
+      await auditLogService.logCriticalAction(
+        currentUser.id,
+        currentUser.name,
+        'BORRADO_CLIENTE',
+        `Se eliminó al cliente de catálogo: ${customerName}`
+      );
+    }
 
     return { success: !error };
   }
@@ -423,18 +459,23 @@ export const salesService = {
     return !error;
   },
 
-  deleteSale: async (saleId: string): Promise<boolean> => {
-    // The trigger on sale_items should handle stock reversion.
-    // But we need to delete items first? No, cascade delete usually handles it, 
-    // but to trigger the stock reversion on each item, we might need to delete items one by one or ensure the trigger fires on bulk delete.
-    // Postgres triggers fire per row on DELETE FROM table, so verifying cascade setup.
-    // Assuming cascade delete is set up on foreign keys. If not, we delete items manually.
-
+  deleteSale: async (saleId: string, currentUser?: { id: string; name: string }): Promise<boolean> => {
     // To be safe and ensure stock triggers run:
     const { error: itemsError } = await supabase.from('sale_items').delete().eq('sale_id', saleId);
     if (itemsError) return false;
 
     const { error } = await supabase.from('sales').delete().eq('id', saleId);
+
+    // GUARDIAN LIGERO: Auditar el borrado de una venta (si se proveyó el usuario)
+    if (!error && currentUser) {
+      await auditLogService.logCriticalAction(
+        currentUser.id,
+        currentUser.name,
+        'BORRADO_VENTA',
+        `Se eliminó permanentemente desde el historial la venta ID: ${saleId}`
+      );
+    }
+
     return !error;
   },
 
@@ -660,7 +701,20 @@ export const inventoryService = {
     }
   },
 
-  deleteMovement: async (movementId: string): Promise<{ success: boolean }> => {
+  deleteMovement: async (movementId: string, currentUser?: { id: string; name: string }): Promise<{ success: boolean }> => {
+    // Audit before delete
+    if (currentUser) {
+      const { data } = await supabase.from('inventory_movement_headers').select('type').eq('id', movementId).single();
+      if (data) {
+        await auditLogService.logCriticalAction(
+          currentUser.id,
+          currentUser.name,
+          'BORRADO_MOVIMIENTO_INVENTARIO',
+          `Se eliminó un movimiento de inventario (Tipo: ${data.type})`
+        );
+      }
+    }
+
     const { error } = await supabase
       .from('inventory_movement_headers')
       .delete()
@@ -669,7 +723,21 @@ export const inventoryService = {
     return { success: !error };
   },
 
-  deleteMovementDetail: async (detailId: string): Promise<{ success: boolean }> => {
+  deleteMovementDetail: async (detailId: string, currentUser?: { id: string; name: string }): Promise<{ success: boolean }> => {
+    if (currentUser) {
+      const { data } = await supabase.from('inventory_movement_details').select('products(name)').eq('id', detailId).single();
+      let pName = detailId;
+      if (data && data.products) {
+        pName = Array.isArray(data.products) ? data.products[0]?.name : (data.products as any).name;
+      }
+      await auditLogService.logCriticalAction(
+        currentUser.id,
+        currentUser.name,
+        'BORRADO_DETALLE_INVENTARIO',
+        `Se eliminó un ítem del movimiento de inventario. Producto asociado: ${pName}`
+      );
+    }
+
     const { error } = await supabase
       .from('inventory_movement_details')
       .delete()
@@ -763,8 +831,27 @@ export const supplierService = {
     return { success: !error };
   },
 
-  delete: async (id: string): Promise<{ success: boolean }> => {
+  delete: async (id: string, currentUser?: { id: string; name: string }): Promise<{ success: boolean }> => {
+    // 1. Obtener el nombre del proveedor antes de borrarlo (para el log)
+    let supplierName = 'ID: ' + id;
+    if (currentUser) {
+      const { data } = await supabase.from('suppliers').select('name').eq('id', id).single();
+      if (data) supplierName = data.name;
+    }
+
+    // 2. Borrar efectivamente
     const { error } = await supabase.from('suppliers').delete().eq('id', id);
+
+    // 3. Registrar auditoría si hubo éxito y mandaron currentUser
+    if (!error && currentUser) {
+      await auditLogService.logCriticalAction(
+        currentUser.id,
+        currentUser.name,
+        'BORRADO_PROVEEDOR',
+        `Se eliminó al proveedor de catálogo: ${supplierName}`
+      );
+    }
+
     return { success: !error };
   }
 };
@@ -1097,8 +1184,21 @@ export const expenseService = {
     }
   },
 
-  delete: async (expenseId: string): Promise<{ success: boolean }> => {
+  delete: async (expenseId: string, currentUser?: { id: string; name: string }): Promise<{ success: boolean }> => {
     try {
+      // Registrar log pre-borrado si mandan usuario
+      if (currentUser) {
+        const { data: expense } = await supabase.from('expenses').select('description, amount, supplier').eq('id', expenseId).single();
+        if (expense) {
+          await auditLogService.logCriticalAction(
+            currentUser.id,
+            currentUser.name,
+            'BORRADO_EGRESO',
+            `Se eliminó un egreso/gasto. Proveedor: ${expense.supplier}, Total: Q${expense.amount.toFixed(2)}, Detalle: ${expense.description || 'N/A'}`
+          );
+        }
+      }
+
       // First, delete any associated payments
       const { error: paymentsError } = await supabase
         .from('expense_payments')
@@ -1335,5 +1435,35 @@ export const orderService = {
       .eq('id', id);
 
     return { success: !error };
+  }
+};
+
+// ==================== AUDIT LOGS SERVICE ====================
+export const auditLogService = {
+  logCriticalAction: async (userId: string, userName: string, action: string, details: string) => {
+    try {
+      // Guardar de manera asíncrona pero sin trabar la vista ('fire-and-forget')
+      await supabase.from('audit_logs').insert({
+        user_name: `${userName} (${userId})`,
+        action: action,
+        details: details
+      });
+    } catch (err) {
+      console.error('Error logging audit action:', err);
+    }
+  },
+
+  getAll: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error('Error fetching audit logs:', error);
+      return [];
+    }
+    return data || [];
   }
 };

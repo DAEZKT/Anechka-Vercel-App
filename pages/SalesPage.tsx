@@ -31,7 +31,7 @@ const cleanSnapshot = (snapshot: string) => {
    }).join(', ');
 };
 
-export const SalesPage = () => {
+export const SalesPage = ({ user }: { user: any }) => {
    // Raw Data
    const [allSales, setAllSales] = useState<SaleHeader[]>([]);
    const [products, setProducts] = useState<Product[]>([]);
@@ -471,7 +471,10 @@ export const SalesPage = () => {
    const handleDeleteSale = async () => {
       if (!selectedSale) return;
       if (window.confirm("¿Está seguro de eliminar esta venta? Esto revertirá el stock de los productos.")) {
-         const success = await salesService.deleteSale(selectedSale.id);
+         const success = await salesService.deleteSale(
+            selectedSale.id,
+            user ? { id: user.id, name: user.full_name } : undefined
+         );
          if (success) {
             alert("Venta eliminada y stock revertido.");
             loadData();

@@ -22,7 +22,7 @@ const getInitials = (name: string) => {
         .toUpperCase();
 };
 
-export const SuppliersPage: React.FC = () => {
+export const SuppliersPage: React.FC<{ user: any }> = ({ user }) => {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -81,7 +81,7 @@ export const SuppliersPage: React.FC = () => {
     const handleDelete = async (id: string, name: string) => {
         if (confirm(`¿Eliminar proveedor "${name}"?`)) {
             try {
-                const result = await supplierService.delete(id);
+                const result = await supplierService.delete(id, user ? { id: user.id, name: user.full_name } : undefined);
                 if (result.success) {
                     loadSuppliers();
                 } else {

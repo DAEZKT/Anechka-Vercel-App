@@ -290,7 +290,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ user }) => {
 
     setLoading(true);
     try {
-      const result = await expenseService.delete(expense.id);
+      const result = await expenseService.delete(expense.id, { id: user.id, name: user.full_name });
 
       if (result.success) {
         await loadData();

@@ -67,10 +67,10 @@ export default function App() {
     if (currentPage === 'dashboard') return <Dashboard user={user} />;
     if (currentPage === 'pos') return <POS user={user} />;
     if (currentPage === 'cash-close') return <CashClosePage user={user} />;
-    if (currentPage === 'sales') return <SalesPage />;
-    if (currentPage === 'customers') return <CustomersPage />;
+    if (currentPage === 'sales') return <SalesPage user={user} />;
+    if (currentPage === 'customers') return <CustomersPage user={user} />;
     if (currentPage === 'expenses') return <ExpensesPage user={user} />;
-    if (currentPage === 'suppliers') return <SuppliersPage />;
+    if (currentPage === 'suppliers') return <SuppliersPage user={user} />;
     if (currentPage === 'pending-orders') return <PendingOrdersPage user={user} />;
 
     // Inventory Sub-routes
