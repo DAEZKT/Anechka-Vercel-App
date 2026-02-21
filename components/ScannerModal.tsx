@@ -68,25 +68,18 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 <Scanner
                     onScan={handleScan}
                     onError={handleError}
-                    // Restringir a formatos comunes en retail para mayor velocidad y evitar falsos positivos
-                    formats={[
-                        'ean_13',
-                        'ean_8',
-                        'upc_a',
-                        'upc_e',
-                        'code_128',
-                        'code_39',
-                        'qr_code'
-                    ]}
+                    // Quitar restricción de formats para que pueda procesar cualquier código de barras nativo o vía polyfill
+                    scanDelay={250} // 4 chequeos por segundo, óptimo y rápido
                     constraints={{
-                        facingMode: facingMode
+                        facingMode: facingMode,
+                        // @ts-ignore - propiedades avanzadas no siempre tipadas en TS standard
+                        advanced: [{ focusMode: 'continuous' }]
                     }}
                     components={{
-                        // Tracker nativo de la librería (dibuja borde verde cuando detecta el código)
-                        tracker: true,
                         // Mostrar botones nativos de zoom y linterna si el dispositivo los soporta
                         zoom: true,
-                        torch: true
+                        torch: true,
+                        finder: true
                     }}
                     styles={{
                         container: {
